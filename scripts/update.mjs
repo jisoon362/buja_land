@@ -125,10 +125,42 @@ async function youtubeSearch(q){
   } catch (e) { console.warn('유튜브 실패', e.message); return []; }
 }
 
+// ── 네이버 '많이 본 뉴스'(조회수 순) 경제 랭킹 — 구조가 달라 실패하면 건너뛰고 최신순으로 대체 ──
+const RANK_URLS = [
+  'https://news.naver.com/main/ranking/popularDay.naver?sectionId=101',
+  'https://news.naver.com/main/ranking/popularDay.naver?mid=etc&sid1=111',
+  'https://news.naver.com/section/101',
+];
+async function naverRanking(){
+  for (const url of RANK_URLS){
+    try {
+      const html = await getText(url);
+      const links = []; const seenL = new Set();
+      for (const m of html.matchAll(/(?:https:\/\/n\.news\.naver\.com)?\/(?:mnews\/)?article\/(\d{3})\/(\d{6,})/g)){
+        const link = `https://n.news.naver.com/article/${m[1]}/${m[2]}`;
+        if (!seenL.has(link)){ seenL.add(link); links.push(link); }
+      }
+      if (links.length < 3) continue;
+      const out = [];
+      for (const link of links.slice(0, COUNT + 4)){
+        try {
+          const page = await getText(link);
+          const title = meta(page, 'og:title'); if (!title) continue;
+          out.push({ source: meta(page, 'og:article:author') || '네이버뉴스', title, link, rank: out.length + 1,
+            pubDate: new Date(meta(page, 'article:published_time') || Date.now()).toISOString(), desc: meta(page, 'og:description') });
+        } catch {}
+      }
+      if (out.length >= 3){ console.log('네이버 랭킹 사용:', url); return out; }
+    } catch (e) { console.warn('네이버 랭킹 실패', url, e.message); }
+  }
+  return [];
+}
+
+const ranked = await naverRanking();
 const feeds = [...(await Promise.all(FEEDS.map(readFeed))).flat(), ...(await naverEconomy())];
 const seen = new Set(); const picks = [];
 const isG = x => (x.link.includes('news.google.com') ? 1 : 0);
-for (const a of feeds.sort((x, y) => isG(x) - isG(y) || (ECON.test(y.title) ? 1 : 0) - (ECON.test(x.title) ? 1 : 0) || +new Date(y.pubDate) - +new Date(x.pubDate))){
+for (const a of [...ranked, ...feeds].sort((x, y) => (x.rank ? x.rank : 999) - (y.rank ? y.rank : 999) || isG(x) - isG(y) || (ECON.test(y.title) ? 1 : 0) - (ECON.test(x.title) ? 1 : 0) || +new Date(y.pubDate) - +new Date(x.pubDate))){
   const k = a.title.slice(0, 18); if (seen.has(k)) continue; seen.add(k); picks.push(a); if (picks.length >= COUNT) break;
 }
 if (!picks.length){ console.error('수집된 기사가 없어 기존 데이터를 유지합니다.'); process.exit(0); }
@@ -138,7 +170,7 @@ for (const [i, a] of picks.entries()){
   const lead = await leadOf(a);
   if (process.env.GEMINI_API_KEY && i) await sleep(7000);
   const ai = (await gemini({ title: a.title, lead })) || fromBank({ title: a.title, lead }, i);
-  const base = { id: `${new Date().toISOString().slice(0, 10)}-${i + 1}`, title: a.title, source: a.source, link: a.link, pubDate: a.pubDate, lead,
+  const base = { id: `${new Date().toISOString().slice(0, 10)}-${i + 1}`, title: a.title, source: a.source, link: a.link, pubDate: a.pubDate, lead, rank: a.rank || null,
     question: ai?.question || '', summary: ai?.summary?.length ? ai.summary : [lead || a.title],
     concept: ai?.concept || null, miniQuiz: ai?.miniQuiz || null, quiz: ai?.quiz || [], searchQuery: ai?.searchQuery || a.title };
   base.videos = await youtubeSearch(base.searchQuery);
@@ -146,5 +178,5 @@ for (const [i, a] of picks.entries()){
   articles.push(base);
   console.log('✔', base.title);
 }
-writeFileSync('data/news.json', JSON.stringify({ updated: new Date().toISOString(), articles }, null, 1));
+writeFileSync('data/news.json', JSON.stringify({ updated: new Date().toISOString(), sortedBy: ranked.length ? 'views' : 'latest', articles }, null, 1));
 console.log(`저장 완료: ${articles.length}건`);
