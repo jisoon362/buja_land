@@ -161,3 +161,6 @@ button:active,.news:active,.choice:active,.menu button:active{transform:scale(.9
 #fsr{width:100%;margin:2px 0 12px;accent-color:var(--blue)}
 .fsprev{background:#f1f6ff;border-radius:14px;padding:14px;margin-bottom:12px;font-size:calc(20px*var(--fs,1));font-weight:700;line-height:1.5}
 .fsprev small{font-weight:400;font-size:calc(15px*var(--fs,1))}
+
+.concept .lvl{display:inline-block;background:#fff2b8;color:#7a5d00;font-size:calc(12px*var(--fs,1));font-weight:700;padding:3px 9px;border-radius:8px;margin-bottom:8px}
+.concept .lens{background:#eaf7ee}

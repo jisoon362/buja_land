@@ -2,6 +2,13 @@
 // 영상은 API 없이 유튜브 검색 링크로 연결. Node 20+. 선택 환경변수: GEMINI_API_KEY
 import { writeFileSync, readFileSync } from 'node:fs';
 const BANK = JSON.parse(readFileSync(new URL('./concepts.json', import.meta.url), 'utf8'));
+const TODAY = new Date().toISOString().slice(0, 10);
+// 최근 며칠간 쓴 키워드는 피해서 매일 다른 개념이 나오게 한다 (오늘 기록은 재실행 시 새로 쓰므로 무시)
+let HISTORY = {};
+try { HISTORY = JSON.parse(readFileSync('data/news.json', 'utf8')).history || {}; } catch {}
+for (const k of Object.keys(HISTORY)) if (HISTORY[k] >= TODAY || (Date.parse(TODAY) - Date.parse(HISTORY[k])) / 864e5 > 14) delete HISTORY[k];
+const USED_TODAY = new Set();
+const recentTerms = () => Object.keys(HISTORY);
 
 const FEEDS = [
   { source: '한국경제', url: 'https://www.hankyung.com/feed/economy' },
@@ -53,6 +60,7 @@ const econScore = t => (String(t || '').match(ECON_KW) || []).length;
 const isEcon = a => !NOT_KW.test(a.title) && (econScore(a.title) * 3 + econScore(a.desc || a.lead || '')) >= 2;
 
 async function gemini(article){
+  const avoid = [...recentTerms(), ...USED_TODAY].join(', ');
   const key = process.env.GEMINI_API_KEY; if (!key) return null;
   const prompt = `당신은 사회초년생에게 경제를 가르치는 친절한 선생님입니다. 아래 한국 경제기사 정보로 학습 콘텐츠를 JSON으로만 만드세요(설명·코드블록 금지).
 제목: ${article.title}
@@ -61,12 +69,12 @@ async function gemini(article){
 스키마:
 {"question":"이 이슈를 한 줄 질문으로(예: 왜 ~했을까?)",
  "summary":["쉬운 말 '~해요'체 요약 4~5개, 마지막은 핵심 질문/시사점"],
- "concept":{"term":"오늘의 경제개념 1개","explain":"2~3문장","example":"일상 예시 1문장","note":["노트에 적을 핵심 2~4줄"]},
- "miniQuiz":{"q":"","choices":["","",""],"answer":0,"explain":""},
- "quiz":[{"q":"","choices":["","",""],"answer":0,"explain":""},{"q":"","choices":["","",""],"answer":0,"explain":""},
+ "concept":{"term":"오늘의 경제개념 1개(기초 용어보다 이 기사를 읽는 데 꼭 필요한 중급·심화 개념 위주)","level":2,"explain":"4~5문장, 원리와 한계까지","example":"숫자가 들어간 일상 예시 1문장","lens":"이 개념으로 뉴스를 읽는 법 1문장","note":["노트에 적을 핵심 3~4줄(공식·인과관계 포함)"]},
+ "miniQuiz":{"q":"짧은 계산 또는 적용 문제","choices":["","","",""],"answer":0,"explain":""},
+ "quiz":[{"q":"숫자 계산 또는 사례 적용 문제","choices":["","","",""],"answer":0,"explain":""},{"q":"원인·결과를 묻는 사례형 문제","choices":["","","",""],"answer":0,"explain":""},
          {"type":"order","q":"과정을 순서대로 나열하세요(순서가 있는 개념일 때만, 아니면 객관식으로 대체)","items":["1단계","2단계","3단계"],"explain":""}],
  "searchQuery":"유튜브에서 이 주제를 찾을 검색어"}
-기사에 없는 사실은 지어내지 말고 개념 중심으로 쓰세요. answer는 0부터 시작하는 정답 인덱스입니다.`;
+정답 위치는 골고루 섞고, 오답은 그럴듯하게 만드세요. 퀴즈는 단순 암기가 아니라 약간 어려운 사례·계산·인과 문제로 내세요. 최근에 쓴 개념은 피하세요: ${avoid}. 기사에 없는 사실은 지어내지 말고 개념 중심으로 쓰세요. answer는 0부터 시작하는 정답 인덱스입니다.`;
   try {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`, {
       method: 'POST', signal: AbortSignal.timeout(90000), headers: { 'content-type': 'application/json' },
@@ -77,19 +85,34 @@ async function gemini(article){
     const t = j.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const out = JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1));
     if (!out.summary?.length || !out.concept || !out.quiz?.length) throw new Error('응답 형식 불량');
+    USED_TODAY.add(out.concept.term); HISTORY[out.concept.term] = TODAY;
     return out;
   } catch (e) { console.warn('Gemini 실패 → 내장 개념은행 사용:', e.message); return null; }
 }
 
-// API 없이: 기사 키워드와 맞는 개념을 고르고, 없으면 날짜로 순환
-function fromBank(a, i){
-  const hit = BANK.find(c => c.keys.some(k => (a.title + ' ' + a.lead).includes(k)));
-  const c = hit || BANK[(Math.floor(Date.now() / 864e5) + i) % BANK.length];
+// API 없이: 기사와 가장 잘 맞는 개념을 고르되, 오늘 이미 쓴 개념·최근 며칠간 쓴 개념은 피한다
+function pickConcept(a){
+  const text = a.title + ' ' + a.lead;
+  const score = c => c.keys.reduce((n, k) => n + (a.title.includes(k) ? 3 : 0) + (text.includes(k) ? (k.length >= 3 ? 2 : 1) : 0), 0);
+  const hash = [...a.title].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  const rank = list => list.map((c, i) => ({ c, s: score(c), t: (hash + i * 7919) % 997 })).sort((x, y) => y.s - x.s || x.t - y.t);
+  const fresh = BANK.filter(c => !USED_TODAY.has(c.term) && !HISTORY[c.term]);
+  const pool = fresh.length ? fresh : BANK.filter(c => !USED_TODAY.has(c.term));
+  const best = rank(pool.length ? pool : BANK)[0].c;
+  USED_TODAY.add(best.term); HISTORY[best.term] = TODAY;
+  return best;
+}
+function fromBank(a){
+  const c = pickConcept(a);
   const sents = (a.lead.match(/[^.!?。]+[.!?。]?/g) || []).map(x => x.trim()).filter(x => x.length > 8).slice(0, 3);
+  const lv = ['기초', '중급', '심화'][(c.level || 2) - 1];
+  // 어려운 순서 문제가 있으면 우선, 나머지는 섞어 3문항
+  const order = c.quiz.filter(q => q.type === 'order'), rest = c.quiz.filter(q => q.type !== 'order');
+  const quiz = [...order, ...rest].slice(0, 3);
   return { question: a.title.replace(/[.?!]$/, '') + ' — 무슨 일일까?',
-    summary: [...sents, `오늘의 키워드는 “${c.term}”예요. 아래 개념으로 이 뉴스를 이해해 봐요.`],
-    concept: { term: c.term, explain: c.explain, example: c.example, note: c.note },
-    miniQuiz: c.miniQuiz, quiz: c.quiz, searchQuery: c.term + ' 쉽게 설명' };
+    summary: [...sents, `📌 오늘의 키워드는 “${c.term}” (${lv})예요.`, c.lens],
+    concept: { term: c.term, level: c.level || 2, explain: c.explain, example: c.example, lens: c.lens, note: c.note },
+    miniQuiz: c.miniQuiz, quiz, searchQuery: c.term + ' 쉽게 설명' };
 }
 
 
@@ -186,7 +209,7 @@ const articles = [];
 for (const [i, a] of picks.entries()){
   const lead = await leadOf(a);
   if (process.env.GEMINI_API_KEY && i) await sleep(7000);
-  const ai = (await gemini({ title: a.title, lead })) || fromBank({ title: a.title, lead }, i);
+  const ai = (await gemini({ title: a.title, lead })) || fromBank({ title: a.title, lead });
   const base = { id: `${new Date().toISOString().slice(0, 10)}-${i + 1}`, title: a.title, source: a.source, link: a.link, pubDate: a.pubDate, lead, rank: a.rank || null,
     question: ai?.question || '', summary: ai?.summary?.length ? ai.summary : [lead || a.title],
     concept: ai?.concept || null, miniQuiz: ai?.miniQuiz || null, quiz: ai?.quiz || [], searchQuery: ai?.searchQuery || a.title };
@@ -195,5 +218,5 @@ for (const [i, a] of picks.entries()){
   articles.push(base);
   console.log('✔', base.title);
 }
-writeFileSync('data/news.json', JSON.stringify({ updated: new Date().toISOString(), sortedBy: ranked.length ? 'views' : 'latest', articles }, null, 1));
+writeFileSync('data/news.json', JSON.stringify({ updated: new Date().toISOString(), sortedBy: ranked.length ? 'views' : 'latest', history: HISTORY, articles }, null, 1));
 console.log(`저장 완료: ${articles.length}건`);

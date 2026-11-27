@@ -200,8 +200,9 @@ function stepSummary(){
 function stepConcept(){
   const c = L.a.concept, body = document.getElementById('body');
   body.innerHTML = `
-    <div class="concept"><h3>${esc(c.term)}</h3>${esc(c.explain)}
-      ${c.example ? `<div class="ex">💬 예를 들면: ${esc(c.example)}</div>` : ''}</div>
+    <div class="concept">${c.level ? `<div class="lvl">${'★'.repeat(c.level)}${'☆'.repeat(3 - c.level)} 난이도 ${['기초', '중급', '심화'][c.level - 1] || ''}</div>` : ''}<h3>${esc(c.term)}</h3>${esc(c.explain)}
+      ${c.example ? `<div class="ex">💬 예를 들면: ${esc(c.example)}</div>` : ''}
+      ${c.lens ? `<div class="ex lens">📰 뉴스 읽는 법: ${esc(c.lens)}</div>` : ''}</div>
     ${c.note?.length ? `<div class="section-h">✏️ 노트에 적어보세요</div><div class="note-card">${c.note.map((n, i) => `${'①②③④⑤'[i] || '•'} ${esc(n)}`).join('<br>')}</div>` : ''}
     <div class="memo"><div class="section-h" style="margin-top:0">📒 내 경제노트</div>
       <textarea id="memo" rows="4" maxlength="1000" placeholder="오늘 배운 걸 내 말로 적어보세요"></textarea>
@@ -258,8 +259,9 @@ function renderQuiz(el, q, opt){
     draw();
     return;
   }
+  const ord = q.choices.map((_, i) => i).sort(() => Math.random() - 0.5);   // 보기 위치를 매번 섞음 (data-i는 원래 번호)
   el.innerHTML = `<div class="qtext">${esc(q.q)}</div>` +
-    q.choices.map((c, i) => `<button class="choice" data-i="${i}"><span class="n">${i + 1}</span>${esc(c)}</button>`).join('');
+    ord.map((oi, pos) => `<button class="choice" data-i="${oi}"><span class="n">${pos + 1}</span>${esc(q.choices[oi])}</button>`).join('');
   el.querySelectorAll('.choice').forEach(b => b.onclick = () => {
     if (locked) return;
     const i = +b.dataset.i, ok = i === q.answer;
