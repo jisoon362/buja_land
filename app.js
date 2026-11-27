@@ -10,6 +10,17 @@ const kstDay = (offset = 0) => new Date(Date.now() + 9 * 3600e3 - offset * 864e5
 let DATA = { articles: [] };
 let L = null; // 진행 중인 학습 세션
 
+/* ---------- 내 경제노트 ---------- */
+const notesAll = () => store.get('notes', []);
+function upsertNote(key, data){
+  const n = notesAll(), i = n.findIndex(x => x.key === key), text = (data.text || '').trim();
+  if (!text){ if (i >= 0) n.splice(i, 1); }
+  else if (i >= 0) n[i] = { ...n[i], ...data, text, ts: Date.now() };
+  else n.push({ key, ...data, text, ts: Date.now() });
+  store.set('notes', n);
+}
+const fmtDate = ts => { const d = new Date(ts); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+
 /* ---------- 진행 기록 ---------- */
 function profile(){ return store.get('profile', { points: 0, streak: 0, last: '', done: {}, sentences: 0 }); }
 function level(p){
@@ -29,11 +40,11 @@ window.addEventListener('popstate', e => {
   const s = e.state; if (s) render(s.view, s.arg); else render('home');
 });
 function render(view = 'home', arg){
-  ({ home, news, article, lesson, concepts, quizzes, videos, rewards }[view] || home)(arg);
+  ({ home, news, article, lesson, concepts, quizzes, videos, rewards, notes }[view] || home)(arg);
   addTab(view);
 }
 /* 하단 탭바 (엄지로 누르기 쉽게) */
-const TABS = [['home', '🏠', '홈'], ['news', '📰', '뉴스'], ['concepts', '💡', '개념'], ['quizzes', '🎯', '퀴즈'], ['videos', '▶️', '영상'], ['rewards', '🏆', '보상']];
+const TABS = [['home', '🏠', '홈'], ['news', '📰', '뉴스'], ['concepts', '💡', '개념'], ['quizzes', '🎯', '퀴즈'], ['notes', '📒', '노트'], ['rewards', '🏆', '보상']];
 function addTab(view){
   document.querySelector('.tabbar')?.remove();
   if (!TABS.some(t => t[0] === view)) return;
@@ -80,6 +91,7 @@ function home(){
       <button data-go="quizzes"><span class="em">🎯</span><b>퀴즈</b><small>풀고 보상 받기</small></button>
       <button data-go="videos"><span class="em">▶️</span><b>관련 영상</b><small>유튜브로 더 알아보기</small></button>
       <button data-go="rewards"><span class="em">🏆</span><b>내 보상</b><small>${level(p.points)}</small></button>
+      <button class="wide" data-go="notes"><span class="em">📒</span><b>내 경제노트</b><small>직접 적은 메모 ${notesAll().length}개 · 모아보기</small></button>
     </div>
   </div>`;
   wire();
@@ -167,9 +179,24 @@ function stepConcept(){
     <div class="concept"><h3>${esc(c.term)}</h3>${esc(c.explain)}
       ${c.example ? `<div class="ex">💬 예를 들면: ${esc(c.example)}</div>` : ''}</div>
     ${c.note?.length ? `<div class="section-h">✏️ 노트에 적어보세요</div><div class="note-card">${c.note.map((n, i) => `${'①②③④⑤'[i] || '•'} ${esc(n)}`).join('<br>')}</div>` : ''}
+    <div class="memo"><div class="section-h" style="margin-top:0">📒 내 경제노트</div>
+      <textarea id="memo" rows="4" maxlength="1000" placeholder="오늘 배운 걸 내 말로 적어보세요"></textarea>
+      <div class="memo-bar">${c.note?.length ? '<button class="mini-btn" id="fill">✏️ 추천 노트 가져오기</button>' : '<span></span>'}<span id="saved"></span></div></div>
     ${L.a.miniQuiz ? `<div class="mini"><span class="lbl">미니 퀴즈</span><div id="mq"></div></div>` : ''}`;
   if (L.a.miniQuiz) renderQuiz(document.getElementById('mq'), L.a.miniQuiz, { count: false, inline: true });
-  bottomBtn('다음', nextStep);
+  /* 메모: 자동 저장 */
+  const key = 'a:' + L.a.id, ta = document.getElementById('memo'), saved = document.getElementById('saved');
+  ta.value = notesAll().find(x => x.key === key)?.text || '';
+  let tm;
+  const save = () => { upsertNote(key, { aid: L.a.id, term: c.term, title: L.a.title, text: ta.value }); saved.textContent = ta.value.trim() ? '저장됨 ✓' : ''; };
+  ta.oninput = () => { saved.textContent = '입력 중…'; clearTimeout(tm); tm = setTimeout(save, 500); };
+  ta.onblur = save;
+  const fill = document.getElementById('fill');
+  if (fill) fill.onclick = () => {
+    const add = c.note.map((n, i) => `${'①②③④⑤'[i] || '•'} ${n}`).join('\n');
+    ta.value = ta.value.trim() ? ta.value.trim() + '\n' + add : add; save(); ta.focus();
+  };
+  bottomBtn('다음', () => { save(); nextStep(); });
 }
 
 function stepQuiz(st){
@@ -279,6 +306,45 @@ function videos(){
   $app.innerHTML = topbar('관련 영상') + `<div class="wrap">` +
     (DATA.articles.map(a => `<div class="section-h">📰 ${esc(a.title)}</div>${videoHtml(a)}`).join('') || '<div class="empty">영상이 아직 없어요</div>') + `</div>`;
   wire();
+}
+/* ---------- 내 노트 모아보기 ---------- */
+function notes(){
+  let filter = '', editing = null;
+  const draw = () => {
+    const list = notesAll().filter(n => !filter || (n.text + (n.term || '') + (n.title || '')).includes(filter)).sort((a, b) => b.ts - a.ts);
+    const card = n => editing === n.key ? `
+      <div class="ncard"><textarea class="ned" rows="5" maxlength="1000" data-k="${esc(n.key)}">${esc(n.text)}</textarea>
+        <div class="nbtns"><button class="mini-btn" data-act="cancel">취소</button><button class="mini-btn on" data-act="save" data-k="${esc(n.key)}">저장</button></div></div>` : `
+      <div class="ncard"><span class="tag">${esc(n.term || '자유 메모')}</span><span class="ndate">${fmtDate(n.ts)}</span>
+        ${n.title ? `<div class="src">📰 ${esc(n.title)}</div>` : ''}
+        <div class="ntext">${esc(n.text)}</div>
+        <div class="nbtns"><button class="mini-btn" data-act="edit" data-k="${esc(n.key)}">수정</button><button class="mini-btn" data-act="del" data-k="${esc(n.key)}">삭제</button></div></div>`;
+    const newBox = editing === 'new' ? `<div class="ncard"><textarea class="ned" id="newta" rows="5" maxlength="1000" placeholder="자유롭게 경제 메모를 적어보세요"></textarea>
+        <div class="nbtns"><button class="mini-btn" data-act="cancel">취소</button><button class="mini-btn on" data-act="savenew">저장</button></div></div>` : '';
+    $app.innerHTML = `<div class="top"><h1>내 경제노트</h1><button class="pill" id="addn">+ 새 메모</button></div>
+      <div class="wrap"><input class="nsearch" id="ns" type="search" placeholder="🔍 메모 검색" value="${esc(filter)}">
+      <div class="date">${notesAll().length}개의 메모</div>${newBox}
+      ${list.map(card).join('') || (editing ? '' : '<div class="empty">아직 메모가 없어요<br>오늘의 개념 화면에서 적거나 + 새 메모를 눌러보세요</div>')}
+      ${notesAll().length ? '<button class="cta ghost" id="copyall" style="margin-top:6px">📋 전체 메모 복사</button>' : ''}</div>`;
+    addTab('notes');
+    document.getElementById('addn').onclick = () => { editing = 'new'; draw(); document.getElementById('newta')?.focus(); };
+    const ns = document.getElementById('ns');
+    ns.oninput = () => { filter = ns.value.trim(); const pos = ns.selectionStart; draw(); const e = document.getElementById('ns'); e.focus(); e.setSelectionRange(pos, pos); };
+    const ca = document.getElementById('copyall');
+    if (ca) ca.onclick = async () => {
+      const txt = notesAll().sort((a, b) => b.ts - a.ts).map(n => `■ ${n.term || '자유 메모'} (${fmtDate(n.ts)})\n${n.text}`).join('\n\n');
+      try { await navigator.clipboard.writeText(txt); ca.textContent = '복사됐어요 ✓'; } catch { ca.textContent = '복사 실패 — 직접 선택해 주세요'; }
+    };
+    $app.querySelectorAll('[data-act]').forEach(b => b.onclick = () => {
+      const act = b.dataset.act, k = b.dataset.k;
+      if (act === 'edit'){ editing = k; draw(); }
+      else if (act === 'cancel'){ editing = null; draw(); }
+      else if (act === 'del'){ if (confirm('이 메모를 삭제할까요?')){ upsertNote(k, { text: '' }); draw(); } }
+      else if (act === 'save'){ upsertNote(k, { text: $app.querySelector(`textarea[data-k="${CSS.escape(k)}"]`).value }); editing = null; draw(); }
+      else if (act === 'savenew'){ const t = document.getElementById('newta').value; if (t.trim()) upsertNote('f:' + Date.now(), { text: t }); editing = null; draw(); }
+    });
+  };
+  draw();
 }
 /* ---------- 내 보상 ---------- */
 function rewards(){

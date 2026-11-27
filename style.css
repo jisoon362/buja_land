@@ -131,3 +131,19 @@ button:active,.news:active,.choice:active,.menu button:active{transform:scale(.9
 @media (max-width:360px){
   .hero h2{font-size:19px} .hero .bunny{font-size:48px} .stat b{font-size:15px} .qtext{font-size:17px}
 }
+
+/* ===== 내 경제노트 ===== */
+.memo{margin:14px 0 6px}
+.memo textarea,.ned,.nsearch{width:100%;border:2px solid #c9dafc;border-radius:14px;padding:12px 14px;font:inherit;font-size:16px;line-height:1.6;background:#fff;color:var(--ink);resize:vertical;outline:none}
+.memo textarea:focus,.ned:focus,.nsearch:focus{border-color:var(--blue)}
+.nsearch{margin-bottom:6px;resize:none}
+.memo-bar{display:flex;justify-content:space-between;align-items:center;margin-top:6px;min-height:36px}
+#saved{color:var(--ok);font-size:13px;font-weight:700}
+.mini-btn{background:#e0ebff;color:var(--blue-d);border-radius:10px;padding:8px 14px;font-size:14px;font-weight:700;min-height:40px}
+.mini-btn.on{background:var(--blue);color:#fff}
+.ncard{background:#fffdf0;border:1px solid #efe2a0;border-radius:16px;padding:14px;margin-bottom:12px;box-shadow:0 2px 8px rgba(120,100,0,.06)}
+.ncard .tag{display:inline-block;background:#fff2b8;color:#7a5d00;font-size:12px;font-weight:700;padding:3px 9px;border-radius:8px}
+.ncard .ndate{float:right;color:var(--mute);font-size:12px;margin-top:4px}
+.ncard .src{margin:8px 0 2px}
+.ntext{white-space:pre-wrap;word-break:break-word;line-height:1.7;margin:8px 0 10px;font-size:15px}
+.nbtns{display:flex;gap:8px;justify-content:flex-end}
