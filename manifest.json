@@ -1,0 +1,9 @@
+{
+  "name": "부자부자 공부방",
+  "short_name": "부자부자",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#eef4ff",
+  "theme_color": "#3b82f6",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
