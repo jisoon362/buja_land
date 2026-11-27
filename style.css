@@ -107,3 +107,27 @@ a{color:var(--blue-d)}
 .section-h{font-size:15px;color:var(--mute);margin:18px 2px 8px}
 .empty{text-align:center;color:var(--mute);padding:40px 0}
 .linkbtn{display:block;text-align:center;background:#fff;border:2px solid #c9dafc;border-radius:14px;padding:12px;text-decoration:none;font-weight:700;margin-bottom:10px}
+
+/* ===== 모바일 최적화 ===== */
+html{-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
+body{font-size:16px;line-height:1.5;touch-action:manipulation;padding-top:env(safe-area-inset-top)}
+button,a{touch-action:manipulation;-webkit-user-select:none;user-select:none}
+button{min-height:44px}
+button:active,.news:active,.choice:active,.menu button:active{transform:scale(.98);transition:transform .08s}
+.top{padding-top:calc(12px + env(safe-area-inset-top));min-height:56px}
+.icon-btn{min-width:44px;min-height:44px}
+.wrap{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+.tabbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:480px;display:flex;background:#fff;
+  border-top:1px solid #dbe6fb;padding-bottom:env(safe-area-inset-bottom);z-index:8;box-shadow:0 -4px 16px rgba(30,60,140,.08)}
+.tabbar button{flex:1;background:none;font-size:11px;color:var(--mute);padding:8px 0 6px;min-height:56px;font-weight:600}
+.tabbar button span{display:block;font-size:22px;line-height:1.1;margin-bottom:2px}
+.tabbar button.on{color:var(--blue-d)}
+.cta{min-height:52px}
+.bottom{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+@media (min-width:520px){
+  body{background:#dfe9fb}
+  #app{box-shadow:0 0 40px rgba(30,60,140,.15);background:var(--bg)}
+}
+@media (max-width:360px){
+  .hero h2{font-size:19px} .hero .bunny{font-size:48px} .stat b{font-size:15px} .qtext{font-size:17px}
+}
