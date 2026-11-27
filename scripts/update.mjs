@@ -104,7 +104,7 @@ async function naverEconomy(){
       try {
         const page = await getText(link);
         const title = meta(page, 'og:title'); if (!title) continue;
-        out.push({ source: meta(page, 'og:article:author') || '네이버뉴스', title, link,
+        out.push({ source: (meta(page, 'og:article:author') || '네이버뉴스').split('|')[0].trim(), title, link,
           pubDate: new Date(meta(page, 'article:published_time') || Date.now()).toISOString(), desc: meta(page, 'og:description') });
       } catch {}
     }
@@ -151,7 +151,7 @@ async function naverRanking(){
         try {
           const page = await getText(link);
           const title = meta(page, 'og:title'); if (!title) continue;
-          out.push({ source: meta(page, 'og:article:author') || '네이버뉴스', title, link, rank: out.length + 1,
+          out.push({ source: (meta(page, 'og:article:author') || '네이버뉴스').split('|')[0].trim(), title, link, rank: out.length + 1,
             pubDate: new Date(meta(page, 'article:published_time') || Date.now()).toISOString(), desc: meta(page, 'og:description') });
         } catch {}
       }
@@ -163,10 +163,13 @@ async function naverRanking(){
 
 const ranked = await naverRanking();
 const feeds = [...(await Promise.all(FEEDS.map(readFeed))).flat(), ...(await naverEconomy())];
-const seen = new Set(); const picks = []; let rk = 0; // 경제 기사만 남긴 뒤 조회수 순위를 1위부터 다시 매김
+ranked.filter(isEcon).sort((x, y) => x.rank - y.rank).forEach((a, i) => { a.rank = i + 1; }); // 경제 기사끼리 조회수 순위를 1위부터 다시 매김
+const seen = new Set(); const picks = [];
+const PREF = /매일경제|한국경제|서울경제|머니투데이|이데일리|파이낸셜뉴스|아시아경제|헤럴드경제|아주경제|조선비즈/; // 대표 경제지는 먼저, 부족하면 다른 언론사 경제 기사로 채움
+const isPref = x => (PREF.test(x.source) ? 0 : 1);
 const isG = x => (x.link.includes('news.google.com') ? 1 : 0);
-for (const a of [...ranked, ...feeds].filter(isEcon).sort((x, y) => (x.rank ? x.rank : 999) - (y.rank ? y.rank : 999) || isG(x) - isG(y) || (ECON.test(y.title) ? 1 : 0) - (ECON.test(x.title) ? 1 : 0) || +new Date(y.pubDate) - +new Date(x.pubDate))){
-  const k = a.title.slice(0, 18); if (seen.has(k)) continue; seen.add(k); if (a.rank) a.rank = ++rk; picks.push(a); if (picks.length >= COUNT) break;
+for (const a of [...ranked, ...feeds].filter(isEcon).sort((x, y) => isPref(x) - isPref(y) || (x.rank ? x.rank : 999) - (y.rank ? y.rank : 999) || isG(x) - isG(y) || (ECON.test(y.title) ? 1 : 0) - (ECON.test(x.title) ? 1 : 0) || +new Date(y.pubDate) - +new Date(x.pubDate))){
+  const k = a.title.slice(0, 18); if (seen.has(k)) continue; seen.add(k); picks.push(a); if (picks.length >= COUNT) break;
 }
 if (!picks.length){ console.error('수집된 기사가 없어 기존 데이터를 유지합니다.'); process.exit(0); }
 
