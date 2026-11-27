@@ -8,7 +8,8 @@ const FEEDS = [
   { source: '매일경제', url: 'https://www.mk.co.kr/rss/30100041/' },
   { source: '구글뉴스 경제', url: 'https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=ko&gl=KR&ceid=KR:ko' },
 ];
-const COUNT = Number(process.env.ARTICLE_COUNT || 5);
+const COUNT = Number(process.env.ARTICLE_COUNT || 6);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const UA = { 'user-agent': 'Mozilla/5.0 (compatible; BujaBujaBot/1.0)' };
 
@@ -85,7 +86,45 @@ function fromBank(a, i){
     miniQuiz: c.miniQuiz, quiz: c.quiz, searchQuery: c.term + ' 쉽게 설명' };
 }
 
-const feeds = (await Promise.all(FEEDS.map(readFeed))).flat();
+
+// ── 네이버 뉴스 경제 섹션 (공식 RSS가 없어 페이지에서 직접 읽음, 실패하면 건너뜀) ──
+const meta = (html, p) => unesc((html.match(new RegExp(`<meta[^>]+property=["']${p}["'][^>]+content=["']([^"']*)["']`, 'i')) || [])[1] || '');
+async function naverEconomy(){
+  try {
+    const html = await getText('https://news.naver.com/section/101');
+    const links = [...new Set(html.match(/https:\/\/n\.news\.naver\.com\/mnews\/article\/\d+\/\d+/g) || [])].slice(0, 8);
+    const out = [];
+    for (const link of links){
+      try {
+        const page = await getText(link);
+        const title = meta(page, 'og:title'); if (!title) continue;
+        out.push({ source: meta(page, 'og:article:author') || '네이버뉴스', title, link,
+          pubDate: new Date(meta(page, 'article:published_time') || Date.now()).toISOString(), desc: meta(page, 'og:description') });
+      } catch {}
+    }
+    return out;
+  } catch (e) { console.warn('네이버 실패', e.message); return []; }
+}
+
+// ── 유튜브 영상: API 키 없이 검색 결과 페이지에서 영상 ID 추출 (실패하면 빈 목록 → 검색 링크만 표시) ──
+async function youtubeSearch(q){
+  try {
+    const r = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&hl=ko&gl=KR`,
+      { headers: { ...UA, 'accept-language': 'ko-KR,ko;q=0.9' }, signal: AbortSignal.timeout(15000) });
+    const html = await r.text(); const seenId = new Set(); const vids = [];
+    for (const m of html.matchAll(/"videoRenderer":\{"videoId":"([\w-]{11})"/g)){
+      if (seenId.has(m[1])) continue; seenId.add(m[1]);
+      const seg = html.slice(m.index, m.index + 4000);
+      const title = (seg.match(/"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/) || [])[1];
+      const channel = (seg.match(/"ownerText":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/) || [])[1];
+      if (title) vids.push({ id: m[1], title: JSON.parse(`"${title}"`), channel: channel ? JSON.parse(`"${channel}"`) : '' });
+      if (vids.length >= 3) break;
+    }
+    return vids;
+  } catch (e) { console.warn('유튜브 실패', e.message); return []; }
+}
+
+const feeds = [...(await Promise.all(FEEDS.map(readFeed))).flat(), ...(await naverEconomy())];
 const seen = new Set(); const picks = [];
 for (const a of feeds.sort((x, y) => (ECON.test(y.title) ? 1 : 0) - (ECON.test(x.title) ? 1 : 0) || +new Date(y.pubDate) - +new Date(x.pubDate))){
   const k = a.title.slice(0, 18); if (seen.has(k)) continue; seen.add(k); picks.push(a); if (picks.length >= COUNT) break;
@@ -95,11 +134,12 @@ if (!picks.length){ console.error('수집된 기사가 없어 기존 데이터�
 const articles = [];
 for (const [i, a] of picks.entries()){
   const lead = await leadOf(a);
+  if (process.env.GEMINI_API_KEY && i) await sleep(7000);
   const ai = (await gemini({ title: a.title, lead })) || fromBank({ title: a.title, lead }, i);
   const base = { id: `${new Date().toISOString().slice(0, 10)}-${i + 1}`, title: a.title, source: a.source, link: a.link, pubDate: a.pubDate, lead,
     question: ai?.question || '', summary: ai?.summary?.length ? ai.summary : [lead || a.title],
     concept: ai?.concept || null, miniQuiz: ai?.miniQuiz || null, quiz: ai?.quiz || [], searchQuery: ai?.searchQuery || a.title };
-  base.videos = [];
+  base.videos = await youtubeSearch(base.searchQuery);
   base.searchQueries = [base.searchQuery, a.title + ' 해설'];
   articles.push(base);
   console.log('✔', base.title);
