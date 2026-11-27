@@ -271,13 +271,13 @@ function renderQuiz(el, q, opt){
 
 function stepVideos(){
   const a = L.a, body = document.getElementById('body');
-  body.innerHTML = `<div class="chip">▶️ 이 기사와 함께 보면 좋은 영상</div>${videoHtml(a)}`;
+  body.innerHTML = `<div class="chip">▶️ 이 기사와 함께 보면 좋은 영상 <small style="opacity:.85">(조회수 순)</small></div>${videoHtml(a)}`;
   bottomBtn('학습 마치기', nextStep);
 }
 function videoHtml(a){
   const qs = (a.searchQueries?.length ? a.searchQueries : [a.searchQuery || a.title]).slice(0, 3);
   const vids = (a.videos || []).map(v => `<div class="vid"><div class="ratio"><iframe loading="lazy" src="https://www.youtube-nocookie.com/embed/${esc(v.id)}" allowfullscreen title="${esc(v.title)}"></iframe></div>
-      <p>${esc(v.title)}<small>${esc(v.channel || '')}</small></p></div>`).join('');
+      <p>${esc(v.title)}<small>${esc(v.channel || '')}${v.viewsText ? ' · ' + esc(v.viewsText) : ''}${v.published ? ' · ' + esc(v.published) : ''}</small></p></div>`).join('');
   return vids + qs.map(q => `<a class="linkbtn" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query=${encodeURIComponent(q)}">▶️ 유튜브에서 “${esc(q).slice(0, 26)}” 보기</a>`).join('');
 }
 

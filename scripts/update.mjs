@@ -113,20 +113,28 @@ async function naverEconomy(){
 }
 
 // ── 유튜브 영상: API 키 없이 검색 결과 페이지에서 영상 ID 추출 (실패하면 빈 목록 → 검색 링크만 표시) ──
+const koNum = t => {  // "조회수 1.2만회" / "조회수 3,456회" → 숫자
+  const m = String(t || '').replace(/,/g, '').match(/([\d.]+)\s*(억|만|천)?/); if (!m) return 0;
+  return Math.round(parseFloat(m[1]) * ({ 억: 1e8, 만: 1e4, 천: 1e3 }[m[2]] || 1));
+};
 async function youtubeSearch(q){
   try {
     const r = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&hl=ko&gl=KR`,
       { headers: { ...UA, 'accept-language': 'ko-KR,ko;q=0.9' }, signal: AbortSignal.timeout(15000) });
-    const html = await r.text(); const seenId = new Set(); const vids = [];
-    for (const m of html.matchAll(/"videoRenderer":\{"videoId":"([\w-]{11})"/g)){
-      if (seenId.has(m[1])) continue; seenId.add(m[1]);
-      const seg = html.slice(m.index, m.index + 4000);
+    const html = await r.text(); const seenId = new Set(); const found = [];
+    const starts = [...html.matchAll(/"videoRenderer":\{"videoId":"([\w-]{11})"/g)];
+    starts.forEach((m, k) => {
+      if (seenId.has(m[1])) return; seenId.add(m[1]);
+      const seg = html.slice(m.index, starts[k + 1]?.index ?? m.index + 9000);   // 이 영상 블록만 잘라서 읽음
       const title = (seg.match(/"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/) || [])[1];
       const channel = (seg.match(/"ownerText":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/) || [])[1];
-      if (title) vids.push({ id: m[1], title: JSON.parse(`"${title}"`), channel: channel ? JSON.parse(`"${channel}"`) : '' });
-      if (vids.length >= 3) break;
-    }
-    return vids;
+      const pt = (seg.match(/"publishedTimeText":\{"simpleText":"((?:[^"\\]|\\.)*)"/) || [])[1] || '';   // 게시일("3일 전" 형태)
+      const vt = (seg.match(/"viewCountText":\{"simpleText":"((?:[^"\\]|\\.)*)"/) || [])[1] || '';
+      if (title) found.push({ id: m[1], title: JSON.parse(`"${title}"`), channel: channel ? JSON.parse(`"${channel}"`) : '',
+        views: /시청 중/.test(vt) ? 0 : koNum(JSON.parse(`"${vt}"`)), viewsText: vt ? JSON.parse(`"${vt}"`) : '', published: pt ? JSON.parse(`"${pt}"`) : '' });
+    });
+    // 관련도 상위 12개 후보를 조회수 많은 순으로 정렬해 3개 선택
+    return found.slice(0, 12).sort((x, y) => y.views - x.views).slice(0, 3);
   } catch (e) { console.warn('유튜브 실패', e.message); return []; }
 }
 
