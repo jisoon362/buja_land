@@ -1,4 +1,4 @@
-/* 부자부자 공부방 – 정적 사이트 (GitHub Pages) */
+/* 지원씨의 부자랜드 – 정적 사이트 (GitHub Pages) */
 const $app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const store = {
@@ -77,7 +77,7 @@ function home(){
   <div class="wrap">
     <div class="hero">
       <div class="bunny">🐰</div>
-      <h2>부자부자 공부방</h2>
+      <h2>지원씨의 부자랜드</h2>
       <p>뉴스 한 편으로 경제 근육 키우기</p>
       <div class="stats">
         <div class="stat">🔥 연속 학습<b>${p.streak}일</b></div>
