@@ -13,9 +13,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const UA = { 'user-agent': 'Mozilla/5.0 (compatible; BujaBujaBot/1.0)' };
 
-const unesc = s => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, ' ')
-  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ')
-  .replace(/\s+/g, ' ').trim();
+const dec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+// 엔티티로 이스케이프된 HTML(구글뉴스 등)도 태그를 먼저 풀고 제거한다
+const unesc = s => dec(s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const tag = (x, t) => (x.match(new RegExp(`<${t}[^>]*>([\\s\\S]*?)</${t}>`)) || [])[1] || '';
 
 async function getText(url){
@@ -30,13 +30,14 @@ async function readFeed({ source, url }){
     return [...xml.matchAll(/<item[\s>][\s\S]*?<\/item>/g)].slice(0, 12).map(m => {
       const it = m[0];
       return { source, title: unesc(tag(it, 'title')).replace(/\s-\s[^-]+$/, ''), link: unesc(tag(it, 'link')),
-        pubDate: new Date(unesc(tag(it, 'pubDate')) || Date.now()).toISOString(), desc: unesc(tag(it, 'description')) };
+        pubDate: new Date(unesc(tag(it, 'pubDate')) || Date.now()).toISOString(), desc: url.includes('news.google.com') ? '' : unesc(tag(it, 'description')) };
     }).filter(a => a.title && a.link);
   } catch (e) { console.warn('피드 실패', source, e.message); return []; }
 }
 
 // 기사 페이지의 og:description(도입부)만 가져온다 — 본문 전체는 저장하지 않음
 async function leadOf(a){
+  if (a.link.includes('news.google.com')) return ''; // 구글뉴스 링크는 중간 이동 페이지라 도입부를 못 가져옴
   try {
     const html = await getText(a.link);
     const og = (html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) || [])[1];
@@ -126,7 +127,8 @@ async function youtubeSearch(q){
 
 const feeds = [...(await Promise.all(FEEDS.map(readFeed))).flat(), ...(await naverEconomy())];
 const seen = new Set(); const picks = [];
-for (const a of feeds.sort((x, y) => (ECON.test(y.title) ? 1 : 0) - (ECON.test(x.title) ? 1 : 0) || +new Date(y.pubDate) - +new Date(x.pubDate))){
+const isG = x => (x.link.includes('news.google.com') ? 1 : 0);
+for (const a of feeds.sort((x, y) => isG(x) - isG(y) || (ECON.test(y.title) ? 1 : 0) - (ECON.test(x.title) ? 1 : 0) || +new Date(y.pubDate) - +new Date(x.pubDate))){
   const k = a.title.slice(0, 18); if (seen.has(k)) continue; seen.add(k); picks.push(a); if (picks.length >= COUNT) break;
 }
 if (!picks.length){ console.error('수집된 기사가 없어 기존 데이터를 유지합니다.'); process.exit(0); }
