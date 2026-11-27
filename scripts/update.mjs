@@ -96,9 +96,13 @@ function pickConcept(a){
   const score = c => c.keys.reduce((n, k) => n + (a.title.includes(k) ? 3 : 0) + (text.includes(k) ? (k.length >= 3 ? 2 : 1) : 0), 0);
   const hash = [...a.title].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
   const rank = list => list.map((c, i) => ({ c, s: score(c), t: (hash + i * 7919) % 997 })).sort((x, y) => y.s - x.s || x.t - y.t);
-  const fresh = BANK.filter(c => !USED_TODAY.has(c.term) && !HISTORY[c.term]);
-  const pool = fresh.length ? fresh : BANK.filter(c => !USED_TODAY.has(c.term));
-  const best = rank(pool.length ? pool : BANK)[0].c;
+  const open = BANK.filter(c => !USED_TODAY.has(c.term));
+  const related = rank(open).filter(x => x.s > 0);
+  // 1순위: 기사와 관련 있고 최근에 안 쓴 개념 → 2순위: 관련 있지만 최근에 쓴 것 중 가장 오래전에 쓴 개념 → 3순위: 안 쓴 개념 중 아무거나
+  const relFresh = related.filter(x => !HISTORY[x.c.term]);
+  const relOld = related.filter(x => HISTORY[x.c.term]).sort((x, y) => HISTORY[x.c.term].localeCompare(HISTORY[y.c.term]) || y.s - x.s);
+  const anyFresh = rank(open.filter(c => !HISTORY[c.term]));
+  const best = (relFresh[0] || relOld[0] || anyFresh[0] || rank(open.length ? open : BANK)[0]).c;
   USED_TODAY.add(best.term); HISTORY[best.term] = TODAY;
   return best;
 }
