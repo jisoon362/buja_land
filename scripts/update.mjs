@@ -48,7 +48,7 @@ async function leadOf(a){
 const ECON = /경제|금리|환율|주가|증시|코스피|코스닥|물가|부동산|대출|수출|반도체|기업|투자|예산|세금|관세|무역|성장|은행|채권|달러|원화|상장|IPO|AI/;
 // ── 경제 기사만 남기기: 경제 키워드 점수(제목 3점·도입부 1점) 2점 이상 + 비경제 키워드가 제목에 없을 것 ──
 const ECON_KW = /경제|금리|환율|주가|증시|코스피|코스닥|물가|부동산|대출|수출|수입|반도체|투자|예산|세금|세제|관세|무역|성장률|은행|채권|국채|달러|원화|상장|IPO|공모|실적|영업이익|매출|시총|시가총액|GDP|인플레|한국은행|금융|펀드|ETF|연금|재정|적자|흑자|유가|원자재|증권|자산|가계부채|주택|전세|월세|분양|고용|실업|임금|내수|배당|인수|합병|구조조정|기업|산업|공급망|기준금리|삼성전자|SK하이닉스|엔비디아|테슬라|비트코인|가상자산/g;
-const NOT_KW = /연예|배우|가수|아이돌|드라마|예능|건강!톡|건강톡|맛집|먹방|관광객|여행|야구|축구|골프|농구|배구|올림픽|월드컵|날씨|살인|체포|열애|결혼|이혼|운세|사건사고|다이어트|화재|교통사고/;
+const NOT_KW = /연예|배우|가수|아이돌|드라마|예능|건강!톡|건강톡|맛집|먹방|관광객|여행|야구|축구|골프|농구|배구|올림픽|월드컵|날씨|살인|체포|열애|결혼|이혼|운세|사건사고|다이어트|화재|교통사고|마운드|투수|타자|홈런|감독|리그|우승|득점|골키퍼|선수단/;
 const econScore = t => (String(t || '').match(ECON_KW) || []).length;
 const isEcon = a => !NOT_KW.test(a.title) && (econScore(a.title) * 3 + econScore(a.desc || a.lead || '')) >= 2;
 
@@ -163,10 +163,10 @@ async function naverRanking(){
 
 const ranked = await naverRanking();
 const feeds = [...(await Promise.all(FEEDS.map(readFeed))).flat(), ...(await naverEconomy())];
-const seen = new Set(); const picks = [];
+const seen = new Set(); const picks = []; let rk = 0; // 경제 기사만 남긴 뒤 조회수 순위를 1위부터 다시 매김
 const isG = x => (x.link.includes('news.google.com') ? 1 : 0);
 for (const a of [...ranked, ...feeds].filter(isEcon).sort((x, y) => (x.rank ? x.rank : 999) - (y.rank ? y.rank : 999) || isG(x) - isG(y) || (ECON.test(y.title) ? 1 : 0) - (ECON.test(x.title) ? 1 : 0) || +new Date(y.pubDate) - +new Date(x.pubDate))){
-  const k = a.title.slice(0, 18); if (seen.has(k)) continue; seen.add(k); picks.push(a); if (picks.length >= COUNT) break;
+  const k = a.title.slice(0, 18); if (seen.has(k)) continue; seen.add(k); if (a.rank) a.rank = ++rk; picks.push(a); if (picks.length >= COUNT) break;
 }
 if (!picks.length){ console.error('수집된 기사가 없어 기존 데이터를 유지합니다.'); process.exit(0); }
 

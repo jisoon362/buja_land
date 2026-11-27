@@ -10,6 +10,30 @@ const kstDay = (offset = 0) => new Date(Date.now() + 9 * 3600e3 - offset * 864e5
 let DATA = { articles: [] };
 let L = null; // 진행 중인 학습 세션
 
+/* ---------- 설정: 글자 크기 ---------- */
+const FS_LEVELS = [['작게', 0.9], ['보통', 1], ['크게', 1.15], ['아주 크게', 1.3], ['최대', 1.5]];
+const fsIndex = () => { const i = store.get('fs', 1); return Number.isInteger(i) && i >= 0 && i < FS_LEVELS.length ? i : 1; };
+const applyFs = () => document.documentElement.style.setProperty('--fs', FS_LEVELS[fsIndex()][1]);
+function openSettings(){
+  if (document.querySelector('.sheet-bg')) return;
+  const bg = document.createElement('div'); bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet"><div class="sheet-h"><b>⚙️ 설정</b><button class="icon-btn" id="sx">✕</button></div>
+    <div class="section-h" style="margin-top:4px">글자 크기</div>
+    <div class="fsbtns">${FS_LEVELS.map(([l], i) => `<button data-i="${i}" class="${i === fsIndex() ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <input type="range" id="fsr" min="0" max="${FS_LEVELS.length - 1}" step="1" value="${fsIndex()}">
+    <div class="fsprev">경제는 어렵지 않아요.<br><small>기준금리가 오르면 대출 이자가 늘어요.</small></div>
+    <button class="cta ghost" id="fsreset">기본 크기로 되돌리기</button></div>`;
+  document.body.appendChild(bg);
+  const set = i => { store.set('fs', i); applyFs(); bg.querySelectorAll('.fsbtns button').forEach(b => b.classList.toggle('on', +b.dataset.i === i)); bg.querySelector('#fsr').value = i; };
+  bg.onclick = e => { if (e.target === bg) bg.remove(); };
+  bg.querySelector('#sx').onclick = () => bg.remove();
+  bg.querySelectorAll('.fsbtns button').forEach(b => b.onclick = () => set(+b.dataset.i));
+  bg.querySelector('#fsr').oninput = e => set(+e.target.value);
+  bg.querySelector('#fsreset').onclick = () => set(1);
+}
+document.addEventListener('click', e => { if (e.target.closest('[data-gear]')) openSettings(); });
+applyFs();
+
 /* ---------- 내 경제노트 ---------- */
 const notesAll = () => store.get('notes', []);
 function upsertNote(key, data){
@@ -60,7 +84,7 @@ function addTab(view){
 
 /* ---------- 공통 조각 ---------- */
 function topbar(title, back = true, right = ''){
-  return `<div class="top">${back ? '<button class="icon-btn" data-back>‹</button>' : ''}<h1>${esc(title)}</h1>${right}</div>`;
+  return `<div class="top">${back ? '<button class="icon-btn" data-back>‹</button>' : ''}<h1>${esc(title)}</h1>${right || '<button class="icon-btn" data-gear aria-label="설정">⚙️</button>'}</div>`;
 }
 function wire(){
   $app.querySelectorAll('[data-back]').forEach(b => b.onclick = () => history.back());
@@ -76,7 +100,7 @@ function home(){
   $app.innerHTML = `
   <div class="wrap">
     <div class="hero">
-      <div class="bunny">🐰</div>
+      <button class="gear" data-gear aria-label="설정">⚙️</button><div class="bunny">🐰</div>
       <h2>지원씨의 부자랜드</h2>
       <p>뉴스 한 편으로 경제 근육 키우기</p>
       <div class="stats">
@@ -150,8 +174,8 @@ function lesson(){
   if (!L) return news();
   const st = L.steps[L.i];
   const total = L.steps.length;
-  const head = `<div class="top"><button class="icon-btn" id="prev">‹</button><h1 style="font-size:15px">${esc(st.label)}</h1>
-     <span class="pill">${L.i + 1} / ${total}</span><button class="icon-btn" id="x">✕</button></div>
+  const head = `<div class="top"><button class="icon-btn" id="prev">‹</button><h1 style="font-size:calc(15px*var(--fs,1))">${esc(st.label)}</h1>
+     <span class="pill">${L.i + 1} / ${total}</span><button class="icon-btn" data-gear aria-label="설정">⚙️</button><button class="icon-btn" id="x">✕</button></div>
      <div class="progress"><i style="width:${((L.i + 1) / total) * 100}%"></i></div>`;
   $app.innerHTML = head + `<div class="wrap" id="body"></div>`;
   document.getElementById('prev').onclick = () => { if (L.i > 0) { L.i--; lesson(); } else history.back(); };
@@ -220,12 +244,12 @@ function renderQuiz(el, q, opt){
   };
   if (q.type === 'order'){
     const order = []; const shuffled = q.items.map((t, i) => ({ t, i })).sort(() => Math.random() - 0.5);
-    el.innerHTML = `<div class="qtext">${esc(q.q)}</div><div class="seq" id="seq"><span style="color:#6b7a99;font-size:13px">아래 보기를 순서대로 눌러주세요</span></div><div id="pool"></div>
+    el.innerHTML = `<div class="qtext">${esc(q.q)}</div><div class="seq" id="seq"><span style="color:#6b7a99;font-size:calc(13px*var(--fs,1))">아래 보기를 순서대로 눌러주세요</span></div><div id="pool"></div>
       <button class="cta ghost" id="reset" style="margin-top:6px">다시 고르기</button><button class="cta" id="ck" style="margin-top:10px" disabled>정답 확인</button>`;
     const pool = el.querySelector('#pool'), seq = el.querySelector('#seq'), ck = el.querySelector('#ck');
     const draw = () => {
       pool.innerHTML = shuffled.map((o, k) => `<button class="choice ${order.includes(k) ? 'picked' : ''}" data-k="${k}" ${order.includes(k) ? 'disabled' : ''}><span class="n">${order.includes(k) ? order.indexOf(k) + 1 : '·'}</span>${esc(o.t)}</button>`).join('');
-      seq.innerHTML = order.length ? order.map((k, n) => `<span class="chipx">${n + 1}. ${esc(shuffled[k].t.slice(0, 14))}…</span>`).join('') : '<span style="color:#6b7a99;font-size:13px">아래 보기를 순서대로 눌러주세요</span>';
+      seq.innerHTML = order.length ? order.map((k, n) => `<span class="chipx">${n + 1}. ${esc(shuffled[k].t.slice(0, 14))}…</span>`).join('') : '<span style="color:#6b7a99;font-size:calc(13px*var(--fs,1))">아래 보기를 순서대로 눌러주세요</span>';
       ck.disabled = order.length !== shuffled.length;
       pool.querySelectorAll('button').forEach(b => b.onclick = () => { if (locked) return; order.push(+b.dataset.k); draw(); });
     };
@@ -321,7 +345,7 @@ function notes(){
         <div class="nbtns"><button class="mini-btn" data-act="edit" data-k="${esc(n.key)}">수정</button><button class="mini-btn" data-act="del" data-k="${esc(n.key)}">삭제</button></div></div>`;
     const newBox = editing === 'new' ? `<div class="ncard"><textarea class="ned" id="newta" rows="5" maxlength="1000" placeholder="자유롭게 경제 메모를 적어보세요"></textarea>
         <div class="nbtns"><button class="mini-btn" data-act="cancel">취소</button><button class="mini-btn on" data-act="savenew">저장</button></div></div>` : '';
-    $app.innerHTML = `<div class="top"><h1>내 경제노트</h1><button class="pill" id="addn">+ 새 메모</button></div>
+    $app.innerHTML = `<div class="top"><h1>내 경제노트</h1><button class="icon-btn" data-gear aria-label="설정">⚙️</button><button class="pill" id="addn">+ 새 메모</button></div>
       <div class="wrap"><input class="nsearch" id="ns" type="search" placeholder="🔍 메모 검색" value="${esc(filter)}">
       <div class="date">${notesAll().length}개의 메모</div>${newBox}
       ${list.map(card).join('') || (editing ? '' : '<div class="empty">아직 메모가 없어요<br>오늘의 개념 화면에서 적거나 + 새 메모를 눌러보세요</div>')}
@@ -351,10 +375,10 @@ function rewards(){
   const p = profile();
   const next = [80, 200, 500].find(n => n > p.points);
   $app.innerHTML = topbar('내 보상') + `<div class="wrap"><div class="done" style="padding-top:0">
-    <div class="big" style="font-size:72px">🏆</div><h2>${level(p.points)}</h2>
+    <div class="big" style="font-size:calc(72px*var(--fs,1))">🏆</div><h2>${level(p.points)}</h2>
     <div class="tiles"><div class="tile">부자 포인트<b>${p.points}</b></div><div class="tile">연속 학습<b>${p.streak}일</b></div><div class="tile">완료한 기사<b>${Object.keys(p.done).length}편</b></div></div>
     <div class="reward">${next ? `다음 레벨까지 ${next - p.points}P 남았어요` : '최고 레벨 달성! 🎉'}</div>
-    <div style="color:#6b7a99;font-size:13px;line-height:1.7">학습 완료 +10P · 정답 1개당 +10P · 전부 맞히면 +20P 보너스</div>
+    <div style="color:#6b7a99;font-size:calc(13px*var(--fs,1));line-height:1.7">학습 완료 +10P · 정답 1개당 +10P · 전부 맞히면 +20P 보너스</div>
   </div></div>`;
   wire();
 }
