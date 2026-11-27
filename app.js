@@ -277,7 +277,7 @@ function stepVideos(){
 function videoHtml(a){
   const qs = (a.searchQueries?.length ? a.searchQueries : [a.searchQuery || a.title]).slice(0, 3);
   const vids = (a.videos || []).map(v => `<div class="vid"><div class="ratio"><iframe loading="lazy" src="https://www.youtube-nocookie.com/embed/${esc(v.id)}" allowfullscreen title="${esc(v.title)}"></iframe></div>
-      <p>${esc(v.title)}<small>${esc(v.channel || '')}${v.viewsText ? ' · ' + esc(v.viewsText) : ''}${v.published ? ' · ' + esc(v.published) : ''}</small></p></div>`).join('');
+      <p>${esc(v.title)}<small>${esc(v.channel || '')}${v.viewsText ? ' · ' + esc(v.viewsText) : ''}${v.published ? ' · 게시 ' + esc(v.published) : ''}${v.duration ? ' · ⏱ ' + esc(v.duration) : ''}</small></p></div>`).join('');
   return vids + qs.map(q => `<a class="linkbtn" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query=${encodeURIComponent(q)}">▶️ 유튜브에서 “${esc(q).slice(0, 26)}” 보기</a>`).join('');
 }
 

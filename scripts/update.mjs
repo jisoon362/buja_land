@@ -129,11 +129,10 @@ async function youtubeSearch(q){
       const title = (seg.match(/"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/) || [])[1];
       const channel = (seg.match(/"ownerText":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/) || [])[1];
       const pt = (seg.match(/"publishedTimeText":\{"simpleText":"((?:[^"\\]|\\.)*)"/) || [])[1] || '';   // 게시일("3일 전" 형태)
-      const pub = (seg.match(/"publishedTimeText":\{"simpleText":"((?:[^"\\]|\\.)*)"/) || [])[1] || '';
       const dur = (seg.match(/"lengthText":\{.{0,500}?"simpleText":"([\d:]+)"/s) || [])[1] || '';
       const vt = (seg.match(/"viewCountText":\{"simpleText":"((?:[^"\\]|\\.)*)"/) || [])[1] || '';
       if (title) found.push({ id: m[1], title: JSON.parse(`"${title}"`), channel: channel ? JSON.parse(`"${channel}"`) : '',
-        views: /시청 중/.test(vt) ? 0 : koNum(JSON.parse(`"${vt}"`)), viewsText: vt ? JSON.parse(`"${vt}"`) : '', published: pt ? JSON.parse(`"${pt}"`) : '' });
+        views: /시청 중/.test(vt) ? 0 : koNum(JSON.parse(`"${vt}"`)), viewsText: vt ? JSON.parse(`"${vt}"`) : '', published: pt ? JSON.parse(`"${pt}"`) : '', duration: dur });
     });
     // 관련도 상위 12개 후보를 조회수 많은 순으로 정렬해 3개 선택
     return found.slice(0, 12).sort((x, y) => y.views - x.views).slice(0, 3);
