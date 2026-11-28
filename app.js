@@ -22,14 +22,34 @@ function openSettings(){
     <div class="fsbtns">${FS_LEVELS.map(([l], i) => `<button data-i="${i}" class="${i === fsIndex() ? 'on' : ''}">${l}</button>`).join('')}</div>
     <input type="range" id="fsr" min="0" max="${FS_LEVELS.length - 1}" step="1" value="${fsIndex()}">
     <div class="fsprev">경제는 어렵지 않아요.<br><small>기준금리가 오르면 대출 이자가 늘어요.</small></div>
-    <button class="cta ghost" id="fsreset">기본 크기로 되돌리기</button></div>`;
+    <button class="cta ghost" id="fsreset">기본 크기로 되돌리기</button>
+    <div class="section-h">메모·오답·기록 백업</div>
+    <div class="bk"><button class="mini-btn" id="bkSave">💾 파일로 저장</button><button class="mini-btn" id="bkCopy">📋 복사</button>
+      <button class="mini-btn" id="bkLoad">📂 파일 불러오기</button><button class="mini-btn" id="bkPaste">📝 붙여넣기</button></div>
+    <textarea id="bkText" class="bktext" rows="3" hidden placeholder="복사해 둔 백업 내용을 붙여넣고 ‘적용’을 누르세요"></textarea>
+    <button class="mini-btn on" id="bkApply" hidden style="margin-top:6px">적용</button>
+    <div id="bkMsg" class="bkmsg">불러오면 지금 기기의 기록과 합쳐져요 (메모·오답은 합치고 포인트는 큰 값 유지).</div>
+    <input type="file" id="bkFile" accept=".json,application/json" hidden></div>`;
   document.body.appendChild(bg);
-  const set = i => { store.set('fs', i); applyFs(); bg.querySelectorAll('.fsbtns button').forEach(b => b.classList.toggle('on', +b.dataset.i === i)); bg.querySelector('#fsr').value = i; };
+  const $ = s => bg.querySelector(s), msg = (t, ok = true) => { $('#bkMsg').textContent = t; $('#bkMsg').style.color = ok ? 'var(--ok)' : 'var(--bad)'; };
+  const set = i => { store.set('fs', i); applyFs(); bg.querySelectorAll('.fsbtns button').forEach(b => b.classList.toggle('on', +b.dataset.i === i)); $('#fsr').value = i; };
   bg.onclick = e => { if (e.target === bg) bg.remove(); };
-  bg.querySelector('#sx').onclick = () => bg.remove();
+  $('#sx').onclick = () => bg.remove();
   bg.querySelectorAll('.fsbtns button').forEach(b => b.onclick = () => set(+b.dataset.i));
-  bg.querySelector('#fsr').oninput = e => set(+e.target.value);
-  bg.querySelector('#fsreset').onclick = () => set(1);
+  $('#fsr').oninput = e => set(+e.target.value);
+  $('#fsreset').onclick = () => set(1);
+  const refresh = () => { const on = document.querySelector('.tabbar .on'); if (on) render(on.dataset.v); };
+  const apply = text => { try { const r = mergeBackup(text); msg(`완료! 메모 ${r.notes}개 · 오답 ${r.wrongs}개가 됐어요 ✓`); refresh(); } catch (e) { msg(e.message, false); } };
+  $('#bkSave').onclick = () => {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buildBackup()], { type: 'application/json' }));
+    a.download = `부자랜드-백업-${kstDay()}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    msg('백업 파일을 저장했어요. 파일 앱·다운로드 폴더를 확인하세요 ✓');
+  };
+  $('#bkCopy').onclick = async () => { try { await navigator.clipboard.writeText(buildBackup()); msg('백업 내용을 복사했어요. 메모 앱 등에 붙여넣어 보관하세요 ✓'); } catch { msg('복사에 실패했어요. ‘파일로 저장’을 이용해 주세요.', false); } };
+  $('#bkLoad').onclick = () => $('#bkFile').click();
+  $('#bkFile').onchange = async e => { const f = e.target.files[0]; if (f) apply(await f.text()); e.target.value = ''; };
+  $('#bkPaste').onclick = () => { $('#bkText').hidden = false; $('#bkApply').hidden = false; $('#bkText').focus(); };
+  $('#bkApply').onclick = () => apply($('#bkText').value);
 }
 document.addEventListener('click', e => { if (e.target.closest('[data-gear]')) openSettings(); });
 applyFs();
@@ -44,6 +64,37 @@ function upsertNote(key, data){
   store.set('notes', n);
 }
 const fmtDate = ts => { const d = new Date(ts); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+
+/* ---------- 오답노트 ---------- */
+const wrongsAll = () => store.get('wrongs', []);
+const qKey = q => (q.type === 'order' ? 'o:' : 'c:') + q.q;
+function recordWrong(q, ctx){
+  const w = wrongsAll(), k = qKey(q), i = w.findIndex(x => x.k === k);
+  if (i >= 0){ w[i].n = (w[i].n || 1) + 1; w[i].ts = Date.now(); }
+  else w.push({ k, q, term: ctx?.term || '', title: ctx?.title || '', n: 1, ts: Date.now() });
+  store.set('wrongs', w);
+}
+const clearWrong = q => store.set('wrongs', wrongsAll().filter(x => x.k !== qKey(q)));
+
+/* ---------- 백업 · 복원 ---------- */
+const buildBackup = () => JSON.stringify({ app: 'buja-land', v: 1, exported: new Date().toISOString(), data: { notes: notesAll(), wrongs: wrongsAll(), profile: profile() } });
+function mergeBackup(text){
+  let obj; try { obj = JSON.parse(text); } catch { throw new Error('백업 내용을 읽을 수 없어요. 복사한 내용이 맞는지 확인해 주세요.'); }
+  const d = obj && obj.data; if (!d || obj.app !== 'buja-land') throw new Error('부자랜드 백업이 아니에요.');
+  const nm = new Map(notesAll().map(n => [n.key, n]));
+  for (const n of d.notes || []){ const c = nm.get(n.key); if (n && n.key && n.text && (!c || (n.ts || 0) > (c.ts || 0))) nm.set(n.key, n); }
+  store.set('notes', [...nm.values()]);
+  const wm = new Map(wrongsAll().map(w => [w.k, w]));
+  for (const w of d.wrongs || []){ const c = wm.get(w.k); if (w && w.k && w.q && (!c || (w.ts || 0) > (c.ts || 0))) wm.set(w.k, w); }
+  store.set('wrongs', [...wm.values()]);
+  const pr = profile(), q = d.profile || {};
+  pr.points = Math.max(pr.points || 0, q.points || 0);
+  pr.sentences = Math.max(pr.sentences || 0, q.sentences || 0);
+  if ((q.last || '') > (pr.last || '')){ pr.last = q.last; pr.streak = q.streak || 0; } else pr.streak = Math.max(pr.streak || 0, (q.last === pr.last ? q.streak : 0) || 0);
+  pr.done = { ...(q.done || {}), ...(pr.done || {}) };
+  store.set('profile', pr);
+  return { notes: nm.size, wrongs: wm.size };
+}
 
 /* ---------- 진행 기록 ---------- */
 function profile(){ return store.get('profile', { points: 0, streak: 0, last: '', done: {}, sentences: 0 }); }
@@ -115,7 +166,7 @@ function home(){
       <button data-go="quizzes"><span class="em">🎯</span><b>퀴즈</b><small>풀고 보상 받기</small></button>
       <button data-go="videos"><span class="em">▶️</span><b>관련 영상</b><small>유튜브로 더 알아보기</small></button>
       <button data-go="rewards"><span class="em">🏆</span><b>내 보상</b><small>${level(p.points)}</small></button>
-      <button class="wide" data-go="notes"><span class="em">📒</span><b>내 경제노트</b><small>직접 적은 메모 ${notesAll().length}개 · 모아보기</small></button>
+      <button class="wide" data-go="notes"><span class="em">📒</span><b>내 경제노트 · 오답노트</b><small>메모 ${notesAll().length}개 · 오답 ${wrongsAll().length}개 · 백업</small></button>
     </div>
   </div>`;
   wire();
@@ -166,7 +217,7 @@ function buildSteps(a, onlyQuiz = false, onlyConcept = false){
   return s;
 }
 function startLesson(a, mode){
-  L = { a, steps: buildSteps(a, mode === 'quiz', mode === 'concept'), i: 0, correct: 0, asked: 0, t0: Date.now(), mode: mode || 'full' };
+  L = { a, steps: buildSteps(a, mode === 'quiz' || mode === 'wrong', mode === 'concept'), i: 0, correct: 0, asked: 0, t0: Date.now(), mode: mode || 'full' };
   go('lesson', a.id);
 }
 function lesson(){
@@ -236,6 +287,8 @@ function renderQuiz(el, q, opt){
   const finish = ok => {
     if (locked) return; locked = true;
     if (opt.count) { L.asked++; if (ok) L.correct++; }
+    if (!ok) recordWrong(q, L.mode === 'wrong' ? null : { term: L.a.concept?.term, title: L.a.title });
+    else if (L.mode === 'wrong') clearWrong(q);
     fb = document.createElement('div');
     fb.className = 'feedback ' + (ok ? 'ok' : 'no');
     fb.innerHTML = `<h4>${ok ? '✅ 정답이에요!' : '❌ 아쉬워요, 다시 확인해요'}</h4><p>${esc(q.explain || '')}</p>
@@ -284,6 +337,14 @@ function videoHtml(a){
 }
 
 function stepDone(){
+  if (L.mode === 'wrong'){
+    const left = wrongsAll().length;
+    $app.querySelector('.progress')?.remove();
+    document.getElementById('body').innerHTML = `<div class="done"><div class="big">🐰</div><div class="good">${L.asked && L.correct === L.asked ? 'Perfect!' : 'Nice try!'}</div>
+      <h2>오답 복습 완료!</h2><div class="tiles"><div class="tile">정복한 오답<b>${L.correct}개</b></div><div class="tile">다시 틀림<b>${L.asked - L.correct}개</b></div><div class="tile">남은 오답<b>${left}개</b></div></div></div>`;
+    bottomBtn('오답노트로', () => { L = null; history.replaceState({ view: 'notes' }, '', '#notes'); render('notes', 'wrong'); });
+    return;
+  }
   const a = L.a, p = profile(), today = kstDay();
   const secs = Math.max(1, Math.round((Date.now() - L.t0) / 1000));
   const text = [...(a.summary || []), a.concept?.explain || ''].join(' ');
@@ -333,10 +394,27 @@ function videos(){
     (DATA.articles.map(a => `<div class="section-h">📰 ${esc(a.title)}</div>${videoHtml(a)}`).join('') || '<div class="empty">영상이 아직 없어요</div>') + `</div>`;
   wire();
 }
-/* ---------- 내 노트 모아보기 ---------- */
-function notes(){
-  let filter = '', editing = null;
-  const draw = () => {
+/* ---------- 내 노트 모아보기 (메모 | 오답노트) ---------- */
+function notes(startTab){
+  let tab = startTab === 'wrong' ? 'wrong' : 'memo', filter = '', editing = null;
+  const seg = () => `<div class="seg"><button data-tab="memo" class="${tab === 'memo' ? 'on' : ''}">📒 내 메모 ${notesAll().length}</button><button data-tab="wrong" class="${tab === 'wrong' ? 'on' : ''}">❌ 오답노트 ${wrongsAll().length}</button></div>`;
+  const wireSeg = () => $app.querySelectorAll('.seg button').forEach(b => b.onclick = () => { tab = b.dataset.tab; editing = null; draw(); window.scrollTo(0, 0); });
+  const gear = '<button class="icon-btn" data-gear aria-label="설정">⚙️</button>';
+  const drawWrong = () => {
+    const list = wrongsAll().sort((a, b) => b.ts - a.ts);
+    const ans = w => w.q.type === 'order' ? w.q.items.map((t, i) => `${i + 1}. ${esc(t)}`).join('<br>') : esc(w.q.choices[w.q.answer]);
+    $app.innerHTML = `<div class="top"><h1>오답노트</h1>${gear}</div><div class="wrap">${seg()}
+      ${list.length ? `<button class="cta" id="redo">🔁 오답 ${list.length}개 다시 풀기</button><div class="date" style="margin-top:10px">다시 풀어서 맞히면 오답노트에서 사라져요</div>` : ''}
+      ${list.map(w => `<div class="ncard wcard"><span class="tag">${esc(w.term || '퀴즈')}</span><span class="ndate">틀린 횟수 ${w.n || 1}회</span>
+        <div class="wq">${esc(w.q.q)}</div><div class="wans">✅ 정답<br>${ans(w)}</div>${w.q.explain ? `<div class="wexp">💡 ${esc(w.q.explain)}</div>` : ''}
+        <div class="nbtns"><button class="mini-btn" data-del="${esc(w.k)}">삭제</button></div></div>`).join('') || '<div class="empty">오답이 없어요 🎉<br>퀴즈에서 틀린 문제가 여기에 모여요</div>'}
+    </div>`;
+    addTab('notes'); wireSeg();
+    const redo = document.getElementById('redo');
+    if (redo) redo.onclick = () => startLesson({ id: 'wrong-review', title: '오답노트 복습', summary: [], quiz: wrongsAll().map(w => w.q) }, 'wrong');
+    $app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { if (confirm('이 오답을 삭제할까요?')){ store.set('wrongs', wrongsAll().filter(x => x.k !== b.dataset.del)); draw(); } });
+  };
+  const drawMemo = () => {
     const list = notesAll().filter(n => !filter || (n.text + (n.term || '') + (n.title || '')).includes(filter)).sort((a, b) => b.ts - a.ts);
     const card = n => editing === n.key ? `
       <div class="ncard"><textarea class="ned" rows="5" maxlength="1000" data-k="${esc(n.key)}">${esc(n.text)}</textarea>
@@ -347,12 +425,12 @@ function notes(){
         <div class="nbtns"><button class="mini-btn" data-act="edit" data-k="${esc(n.key)}">수정</button><button class="mini-btn" data-act="del" data-k="${esc(n.key)}">삭제</button></div></div>`;
     const newBox = editing === 'new' ? `<div class="ncard"><textarea class="ned" id="newta" rows="5" maxlength="1000" placeholder="자유롭게 경제 메모를 적어보세요"></textarea>
         <div class="nbtns"><button class="mini-btn" data-act="cancel">취소</button><button class="mini-btn on" data-act="savenew">저장</button></div></div>` : '';
-    $app.innerHTML = `<div class="top"><h1>내 경제노트</h1><button class="icon-btn" data-gear aria-label="설정">⚙️</button><button class="pill" id="addn">+ 새 메모</button></div>
-      <div class="wrap"><input class="nsearch" id="ns" type="search" placeholder="🔍 메모 검색" value="${esc(filter)}">
-      <div class="date">${notesAll().length}개의 메모</div>${newBox}
+    $app.innerHTML = `<div class="top"><h1>내 경제노트</h1>${gear}<button class="pill" id="addn">+ 새 메모</button></div>
+      <div class="wrap">${seg()}<input class="nsearch" id="ns" type="search" placeholder="🔍 메모 검색" value="${esc(filter)}">${newBox}
       ${list.map(card).join('') || (editing ? '' : '<div class="empty">아직 메모가 없어요<br>오늘의 개념 화면에서 적거나 + 새 메모를 눌러보세요</div>')}
-      ${notesAll().length ? '<button class="cta ghost" id="copyall" style="margin-top:6px">📋 전체 메모 복사</button>' : ''}</div>`;
-    addTab('notes');
+      ${notesAll().length ? '<button class="cta ghost" id="copyall" style="margin-top:6px">📋 전체 메모 복사</button>' : ''}
+      <button class="cta ghost" data-gear style="margin-top:10px">💾 메모·오답 백업 / 복원</button></div>`;
+    addTab('notes'); wireSeg();
     document.getElementById('addn').onclick = () => { editing = 'new'; draw(); document.getElementById('newta')?.focus(); };
     const ns = document.getElementById('ns');
     ns.oninput = () => { filter = ns.value.trim(); const pos = ns.selectionStart; draw(); const e = document.getElementById('ns'); e.focus(); e.setSelectionRange(pos, pos); };
@@ -370,6 +448,7 @@ function notes(){
       else if (act === 'savenew'){ const t = document.getElementById('newta').value; if (t.trim()) upsertNote('f:' + Date.now(), { text: t }); editing = null; draw(); }
     });
   };
+  const draw = () => tab === 'wrong' ? drawWrong() : drawMemo();
   draw();
 }
 /* ---------- 내 보상 ---------- */

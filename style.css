@@ -164,3 +164,17 @@ button:active,.news:active,.choice:active,.menu button:active{transform:scale(.9
 
 .concept .lvl{display:inline-block;background:#fff2b8;color:#7a5d00;font-size:calc(12px*var(--fs,1));font-weight:700;padding:3px 9px;border-radius:8px;margin-bottom:8px}
 .concept .lens{background:#eaf7ee}
+
+/* ===== 오답노트 · 백업 ===== */
+.seg{display:flex;background:#dbe8ff;border-radius:14px;padding:4px;margin-bottom:10px}
+.seg button{flex:1;background:none;border-radius:11px;font-size:calc(14px*var(--fs,1));font-weight:700;color:var(--blue-d);padding:8px 4px}
+.seg button.on{background:#fff;box-shadow:0 1px 4px rgba(30,60,140,.15)}
+.wcard{background:#fff;border-color:#f5c9d0}
+.wcard .tag{background:#ffe3e8;color:#b4233f}
+.wq{font-weight:700;line-height:1.55;margin:10px 0 8px;font-size:calc(15px*var(--fs,1))}
+.wans{background:#ecfdf3;border-radius:12px;padding:10px 12px;line-height:1.6;font-size:calc(14px*var(--fs,1))}
+.wexp{color:#33415f;font-size:calc(13px*var(--fs,1));line-height:1.6;margin:8px 0}
+.sheet{max-height:90vh;overflow-y:auto}
+.bk{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 8px}
+.bktext{width:100%;border:2px solid #c9dafc;border-radius:12px;padding:10px;font:inherit;font-size:16px;margin-top:6px}
+.bkmsg{font-size:calc(13px*var(--fs,1));color:var(--mute);line-height:1.6;margin-top:8px}
