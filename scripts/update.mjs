@@ -222,5 +222,58 @@ for (const [i, a] of picks.entries()){
   articles.push(base);
   console.log('✔', base.title);
 }
-writeFileSync('data/news.json', JSON.stringify({ updated: new Date().toISOString(), sortedBy: ranked.length ? 'views' : 'latest', history: HISTORY, articles }, null, 1));
+
+// ── 증시 탭: 증권 섹션 기사를 모아 종류별로 분류 (학습·AI 호출 없이 도입부만 저장) ──
+const STOCK_FEEDS = [
+  { source: '한국경제', url: 'https://www.hankyung.com/feed/finance' },
+  { source: '매일경제', url: 'https://www.mk.co.kr/rss/50200011/' },
+];
+const STOCK_KW = /증시|코스피|코스닥|주가|주식|종목|상장|공모|IPO|배당|시총|시가총액|외국인|기관|개인|순매수|순매도|공매도|ETF|증권|실적|영업이익|목표주가|리포트|나스닥|다우|S&P|뉴욕증시|환율|금리|반도체|2차전지|바이오|테마/;
+const STOCK_NOT = /연예|배우|가수|아이돌|드라마|예능|맛집|야구|축구|골프|농구|배구|운세|사건사고|화재|교통사고|부고|인사|부음/;
+// 기사 종류: 믿고 볼 것(시황·실적·공시) / 참고(리포트·해외·업종) / 주의(급등·테마·추천 같은 자극적 제목)
+const stockKind = t =>
+  /급등|급락|상한가|하한가|테마주|추천|대박|폭등|폭락|줍줍|수혜주|\d+배|올라탈|지금\s*사/.test(t) ? { k: 'warn', label: '⚠️ 주의 기사' }
+  : /마감|장중|개장|출발|시황|코스피|코스닥|마켓|뉴욕증시|나스닥|다우|S&P/.test(t) ? { k: 'market', label: '📊 시황' }
+  : /실적|영업이익|영업익|매출|분기|공시|잠정|흑자|적자|배당|자사주|유상증자|무상증자|상장|IPO|공모/.test(t) ? { k: 'earn', label: '🏢 실적·공시' }
+  : /목표주가|목표가|리포트|투자의견|커버리지|애널리스트/.test(t) ? { k: 'report', label: '📑 리포트(참고)' }
+  : { k: 'etc', label: '📰 업종·이슈' };
+async function stockNaver(){
+  const out = [];
+  for (const url of ['https://news.naver.com/breakingnews/section/101/258', 'https://news.naver.com/section/101']){
+    try {
+      const html = await getText(url);
+      const links = [...new Set([...html.matchAll(/https:\/\/n\.news\.naver\.com\/(?:mnews\/)?article\/(\d{3})\/(\d{6,})/g)].map(m => `https://n.news.naver.com/article/${m[1]}/${m[2]}`))].slice(0, 18);
+      for (const link of links){
+        try {
+          const page = await getText(link); const title = meta(page, 'og:title'); if (!title) continue;
+          out.push({ source: (meta(page, 'og:article:author') || '네이버뉴스').split('|')[0].trim(), title, link,
+            pubDate: new Date(meta(page, 'article:published_time') || Date.now()).toISOString(), desc: meta(page, 'og:description') });
+        } catch {}
+      }
+      if (out.length >= 5) break;
+    } catch (e) { console.warn('증시 네이버 실패', url, e.message); }
+  }
+  return out;
+}
+async function collectStocks(){
+  const all = [...(await Promise.all(STOCK_FEEDS.map(readFeed))).flat(), ...(await stockNaver())];
+  const okTxt = a => !STOCK_NOT.test(a.title) && (STOCK_KW.test(a.title) || (STOCK_KW.test(a.desc || '') && /증시|주가|코스피|코스닥|종목|상장|공모|실적/.test(a.title + (a.desc || ''))));
+  const seenS = new Set(); const pool = [];
+  for (const a of all.filter(okTxt).sort((x, y) => isPref(x) - isPref(y) || +new Date(y.pubDate) - +new Date(x.pubDate))){
+    const k = a.title.replace(/\s/g, '').slice(0, 16); if (seenS.has(k) || a.link.includes('news.google.com')) continue; seenS.add(k); pool.push(a);
+    if (pool.length >= 14) break;
+  }
+  const items = [];
+  for (const [i, a] of pool.entries()){
+    const lead = await leadOf(a); const kind = stockKind(a.title);
+    items.push({ id: `s${TODAY}-${i + 1}`, title: a.title, source: a.source, link: a.link, pubDate: a.pubDate, lead, kind: kind.k, kindLabel: kind.label });
+  }
+  return items;
+}
+let stocks = [];
+try { stocks = await collectStocks(); } catch (e) { console.warn('증시 수집 실패', e.message); }
+if (!stocks.length){ try { stocks = JSON.parse(readFileSync('data/news.json', 'utf8')).stocks || []; console.warn('증시 기사를 못 가져와 이전 목록을 유지합니다.'); } catch {} }
+console.log(`증시 기사: ${stocks.length}건`);
+
+writeFileSync('data/news.json', JSON.stringify({ updated: new Date().toISOString(), sortedBy: ranked.length ? 'views' : 'latest', history: HISTORY, stocks, articles }, null, 1));
 console.log(`저장 완료: ${articles.length}건`);

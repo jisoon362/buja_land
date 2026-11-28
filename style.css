@@ -190,3 +190,15 @@ button:active,.news:active,.choice:active,.menu button:active{transform:scale(.9
 .qbub{background:var(--blue);color:#fff;border-radius:16px 16px 4px 16px;padding:10px 14px;margin:8px 0 6px 28px;line-height:1.5;font-size:calc(15px*var(--fs,1));word-break:break-word}
 .abub{background:#f1f6ff;border-radius:16px 16px 16px 4px;padding:12px 14px;margin:0 28px 6px 0;line-height:1.7;font-size:calc(15px*var(--fs,1));white-space:pre-wrap;word-break:break-word}
 .abtn{margin-top:8px;text-align:right}
+
+/* 증시 탭 */
+.tipcard{background:#eef5ff;border:1px solid #c9dafc;border-radius:14px;padding:12px 14px;margin-bottom:12px;font-size:calc(13px*var(--fs,1));line-height:1.7}
+.tipcard ol{margin:6px 0 0;padding-left:20px}
+.stseg{overflow-x:auto;gap:2px}
+.stseg button{flex:0 0 auto;padding:8px 10px;font-size:calc(13px*var(--fs,1));white-space:nowrap}
+.news .tag.warn{background:#ffe9e0;color:#c2410c}
+.warnbox{background:#fff4e5;border:1px solid #ffd59a;color:#9a4b00;border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:calc(13px*var(--fs,1));line-height:1.6}
+.stlink{text-align:left;padding:12px 14px}
+.stlink small{display:block;font-weight:400;color:var(--mute);font-size:calc(12px*var(--fs,1));margin-top:2px}
+.stta{width:100%;box-sizing:border-box;border:1px solid #e7d68a;border-radius:10px;padding:10px;font:inherit;font-size:calc(14px*var(--fs,1));background:#fff;resize:vertical;margin-top:6px}
+.saved{color:var(--mute);font-size:calc(12px*var(--fs,1));text-align:right;min-height:16px}

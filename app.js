@@ -163,11 +163,11 @@ window.addEventListener('popstate', e => {
   const s = e.state; if (s) render(s.view, s.arg); else render('home');
 });
 function render(view = 'home', arg){
-  ({ home, news, article, lesson, concepts, quizzes, videos, rewards, notes }[view] || home)(arg);
+  ({ home, news, article, lesson, concepts, quizzes, videos, rewards, notes, stocks, stock }[view] || home)(arg);
   addTab(view);
 }
 /* 하단 탭바 (엄지로 누르기 쉽게) */
-const TABS = [['home', '🏠', '홈'], ['news', '📰', '뉴스'], ['concepts', '💡', '개념'], ['quizzes', '🎯', '퀴즈'], ['notes', '📒', '노트'], ['rewards', '🏆', '보상']];
+const TABS = [['home', '🏠', '홈'], ['news', '📰', '뉴스'], ['concepts', '💡', '개념'], ['quizzes', '🎯', '퀴즈'], ['stocks', '📈', '증시'], ['notes', '📒', '노트']];
 function addTab(view){
   document.querySelector('.tabbar')?.remove();
   if (!TABS.some(t => t[0] === view)) return;
@@ -214,6 +214,7 @@ function home(){
       <button data-go="quizzes"><span class="em">🎯</span><b>퀴즈</b><small>풀고 보상 받기</small></button>
       <button data-go="videos"><span class="em">▶️</span><b>관련 영상</b><small>유튜브로 더 알아보기</small></button>
       <button data-go="rewards"><span class="em">🏆</span><b>내 보상</b><small>${level(p.points)}</small></button>
+      <button class="wide" data-go="stocks"><span class="em">📈</span><b>증시</b><small>시황 · 실적·공시 · 주의 기사 구분해서 보기</small></button>
       <button class="wide" data-go="notes"><span class="em">📒</span><b>내 경제노트 · 오답노트</b><small>메모 ${notesAll().length}개 · 오답 ${wrongsAll().length}개 · 백업</small></button>
     </div>
   </div>`;
@@ -236,6 +237,58 @@ function news(){
     ${list || '<div class="empty">아직 기사가 없어요</div>'}</div>`;
   wire();
   $app.querySelectorAll('.news').forEach(b => b.onclick = () => go('article', b.dataset.arg));
+}
+
+/* ---------- 증시 탭 ---------- */
+const STOCK_TABS = [['all', '전체'], ['market', '📊 시황'], ['earn', '🏢 실적·공시'], ['etc', '📰 이슈'], ['warn', '⚠️ 주의']];
+let stockTab = 'all';
+const STOCK_LINKS = [
+  ['📑 DART 전자공시', 'https://dart.fss.or.kr', '기업 공식 공시 — 기사보다 먼저'],
+  ['📊 네이버 증권', 'https://finance.naver.com/sise/', '코스피·코스닥 지수와 시세'],
+  ['🏛️ KRX KIND', 'https://kind.krx.co.kr', '거래소 공시·상장 정보'],
+];
+function stocks(){
+  const all = DATA.stocks || [];
+  const list = all.filter(a => stockTab === 'all' ? a.kind !== 'warn' : a.kind === stockTab);
+  const cnt = k => all.filter(a => k === 'all' ? a.kind !== 'warn' : a.kind === k).length;
+  $app.innerHTML = topbar('증시') + `<div class="wrap">
+    <div class="tipcard"><b>💡 증시 기사 읽는 법</b>
+      <ol><li>숫자와 <b>공시</b>가 있는 기사인지 확인</li><li>"급등·추천·테마" 제목은 <b>⚠️ 주의</b>로 따로 모았어요</li><li>같은 일을 <b>두 신문</b>에서 비교해 보기</li></ol></div>
+    <div class="seg stseg">${STOCK_TABS.map(([k, l]) => `<button data-t="${k}" class="${k === stockTab ? 'on' : ''}">${l}${cnt(k) ? ' ' + cnt(k) : ''}</button>`).join('')}</div>
+    <div class="date">${esc(DATA.updated ? DATA.updated.slice(0, 10) + ' 업데이트' : '')} · 최신순</div>
+    ${list.map(a => `<button class="news stk" data-id="${esc(a.id)}">
+      <span class="tag ${a.kind === 'warn' ? 'warn' : ''}">${esc(a.kindLabel || '')}</span>
+      <div class="src">${esc(a.source || '')} ${a.pubDate ? '· ' + esc(a.pubDate.slice(5, 10).replace('-', '/')) : ''}</div>
+      <h3>${esc(a.title)}</h3></button>`).join('') || '<div class="empty">' + (all.length ? '이 분류의 기사가 아직 없어요' : '증시 기사가 아직 없어요. 다음 자동 업데이트(매일 아침) 후 나타나요') + '</div>'}
+    <div class="section-h">🔎 사실 확인 바로가기</div>
+    ${STOCK_LINKS.map(([t, u, d]) => `<a class="linkbtn stlink" target="_blank" rel="noopener" href="${u}"><b>${t}</b><small>${d}</small></a>`).join('')}
+    <div class="note" style="margin-top:12px">참고용 정보이며 종목 추천이 아니에요. 투자 판단과 책임은 본인에게 있어요.</div>
+  </div>`;
+  wire();
+  $app.querySelectorAll('.stseg button').forEach(b => b.onclick = () => { stockTab = b.dataset.t; stocks(); });
+  $app.querySelectorAll('.stk').forEach(b => b.onclick = () => go('stock', b.dataset.id));
+}
+function stock(id){
+  const a = (DATA.stocks || []).find(x => x.id === id); if (!a) return stocks();
+  const key = 'st:' + a.id, cur = notesAll().find(n => n.key === key);
+  const warn = a.kind === 'warn';
+  $app.innerHTML = topbar('증시 기사') + `<div class="wrap article">
+    <div class="meta">${esc(a.source || '')} ${a.pubDate ? '· ' + esc(a.pubDate.slice(0, 10)) : ''} · ${esc(a.kindLabel || '')}</div>
+    <h2>${esc(a.title)}</h2>
+    ${warn ? '<div class="warnbox">⚠️ 자극적인 제목일 수 있어요. 공시·실적 숫자를 먼저 확인하고, 이미 오른 뒤의 기사인지 살펴보세요.</div>' : ''}
+    <div class="body">${esc(a.lead || '도입부를 가져오지 못했어요. 아래 버튼으로 원문을 확인해 주세요.')}
+      ${a.link ? `<a class="linkbtn" style="margin-top:12px" target="_blank" rel="noopener" href="${esc(a.link)}">📄 원문 전체 보기 (${esc(a.source || '언론사')})</a>` : ''}
+      <div class="note">저작권 보호를 위해 기사 도입부만 보여드려요.</div>
+    </div>
+    <div class="tipcard"><b>✅ 읽고 나서 체크</b>
+      <ol><li>근거가 <b>공시·실적 숫자</b>인가요? (DART에서 확인)</li><li>다른 신문도 같은 내용인가요?</li><li>주가가 이미 움직인 뒤의 기사는 아닌가요?</li></ol>
+      <a class="linkbtn" style="margin-top:8px" target="_blank" rel="noopener" href="https://dart.fss.or.kr">📑 DART 전자공시 열기</a></div>
+    <div class="note-card"><b>📒 내 증시노트</b>
+      <textarea id="stta" class="stta" placeholder="이 기사에서 알게 된 점, 더 확인할 것을 적어보세요" rows="4">${esc(cur?.text || '')}</textarea><div class="saved" id="stsv"></div></div>
+  </div>`;
+  wire();
+  const ta = document.getElementById('stta'), sv = document.getElementById('stsv'); let t;
+  ta.oninput = () => { clearTimeout(t); t = setTimeout(() => { upsertNote(key, { aid: a.id, term: '증시', title: a.title, text: ta.value }); sv.textContent = ta.value.trim() ? '저장됨 ✓' : ''; }, 500); };
 }
 
 /* ---------- 기사 본문 ---------- */
