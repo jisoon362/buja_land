@@ -23,6 +23,10 @@ function openSettings(){
     <input type="range" id="fsr" min="0" max="${FS_LEVELS.length - 1}" step="1" value="${fsIndex()}">
     <div class="fsprev">경제는 어렵지 않아요.<br><small>기준금리가 오르면 대출 이자가 늘어요.</small></div>
     <button class="cta ghost" id="fsreset">기본 크기로 되돌리기</button>
+    <div class="section-h">🤖 AI 질문 설정 (무료 Gemini 키)</div>
+    <input id="aiKey" type="password" class="bktext" style="margin:0 0 8px" autocomplete="off" placeholder="API 키 붙여넣기 (AIza…)">
+    <div class="bk"><button class="mini-btn on" id="aiSave">키 저장</button><button class="mini-btn" id="aiDel">키 삭제</button></div>
+    <div class="bkmsg" id="aiMsg">키는 이 기기에만 저장되고 백업에도 포함되지 않아요. aistudio.google.com 에서 무료로 발급할 수 있어요. 무료 이용 시 입력한 질문이 구글 서비스 개선에 쓰일 수 있으니 개인정보는 적지 마세요.</div>
     <div class="section-h">메모·오답·기록 백업</div>
     <div class="bk"><button class="mini-btn" id="bkSave">💾 파일로 저장</button><button class="mini-btn" id="bkCopy">📋 복사</button>
       <button class="mini-btn" id="bkLoad">📂 파일 불러오기</button><button class="mini-btn" id="bkPaste">📝 붙여넣기</button></div>
@@ -38,6 +42,14 @@ function openSettings(){
   bg.querySelectorAll('.fsbtns button').forEach(b => b.onclick = () => set(+b.dataset.i));
   $('#fsr').oninput = e => set(+e.target.value);
   $('#fsreset').onclick = () => set(1);
+  const kmsg = (t, ok = true) => { $('#aiMsg').textContent = t; $('#aiMsg').style.color = ok ? 'var(--ok)' : 'var(--bad)'; };
+  if (getKey()) $('#aiKey').placeholder = `저장됨 ✓ (…${getKey().slice(-4)}) 새 키로 바꾸려면 다시 입력`;
+  $('#aiSave').onclick = () => {
+    const k = $('#aiKey').value.trim(); if (!k) return kmsg('키를 붙여넣어 주세요.', false);
+    store.set('gkey', k); $('#aiKey').value = ''; $('#aiKey').placeholder = `저장됨 ✓ (…${k.slice(-4)})`;
+    kmsg(/^AIza[\w-]{20,}$/.test(k) ? '키를 저장했어요 ✓ 이제 개념 화면에서 질문해 보세요.' : '저장은 했는데 키 모양이 달라 보여요. 질문이 안 되면 키를 다시 확인해 주세요.', /^AIza/.test(k));
+  };
+  $('#aiDel').onclick = () => { store.set('gkey', ''); $('#aiKey').placeholder = 'API 키 붙여넣기 (AIza…)'; kmsg('키를 삭제했어요.'); };
   const refresh = () => { const on = document.querySelector('.tabbar .on'); if (on) render(on.dataset.v); };
   const apply = text => { try { const r = mergeBackup(text); msg(`완료! 메모 ${r.notes}개 · 오답 ${r.wrongs}개가 됐어요 ✓`); refresh(); } catch (e) { msg(e.message, false); } };
   $('#bkSave').onclick = () => {
@@ -53,6 +65,36 @@ function openSettings(){
 }
 document.addEventListener('click', e => { if (e.target.closest('[data-gear]')) openSettings(); });
 applyFs();
+
+/* ---------- AI에게 질문 (구글 Gemini · 내 기기에 저장한 무료 키 사용) ---------- */
+const AI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+const getKey = () => store.get('gkey', '');
+const qaAll = () => store.get('qa', {});
+const qaOf = id => qaAll()[id] || [];
+function qaAdd(id, item){ const all = qaAll(), arr = all[id] || []; arr.push(item); all[id] = arr.slice(-20); store.set('qa', all); }
+const mdLite = t => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/^[-*] /gm, '• ');
+async function askAI(question, a, history){
+  const key = getKey(); if (!key) throw new Error('NOKEY');
+  const c = a.concept || {};
+  const sys = `당신은 경제를 처음 배우는 한국 사회초년생을 돕는 친절한 경제 선생님입니다. 한국어 존댓말로, 모바일에서 읽기 좋게 간결하게(보통 6~10문장 이내) 답하세요. 어려운 용어는 쉬운 말로 풀고 숫자가 들어간 짧은 예시를 곁들이세요. 투자 권유나 특정 종목의 매수·매도 추천은 하지 말고, 확실하지 않은 내용은 모른다고 말하세요. 학습 중인 기사: "${a.title}". 오늘의 개념: ${c.term || '없음'} — ${c.explain || ''}`;
+  const contents = [...history.flatMap(h => [{ role: 'user', parts: [{ text: h.q }] }, { role: 'model', parts: [{ text: h.a }] }]), { role: 'user', parts: [{ text: question }] }];
+  for (const model of AI_MODELS){
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, generationConfig: { temperature: 0.5, maxOutputTokens: 2048 } }) });
+    const j = await r.json().catch(() => ({})); const msg = j.error?.message || '';
+    if (r.ok){
+      const t = (j.candidates?.[0]?.content?.parts || []).map(x => x.text || '').join('').trim();
+      if (t) return t; throw new Error('답변이 비어 있어요. 질문을 조금 바꿔서 다시 물어봐 주세요.');
+    }
+    if (r.status === 404) continue;   // 이 모델이 없으면 다음 모델 시도
+    if (r.status === 400 && /API key/i.test(msg)) throw new Error('API 키가 올바르지 않아요. ⚙️ 설정에서 다시 입력해 주세요.');
+    if (r.status === 403) throw new Error('이 키로는 사용할 수 없어요(권한 오류). 키를 확인해 주세요.');
+    if (r.status === 429) throw new Error('무료 사용량을 넘었거나 너무 빨리 눌렀어요. 잠시 뒤 다시 해보세요.');
+    throw new Error(`AI 응답 오류 (${r.status}). 잠시 뒤 다시 시도해 주세요.`);
+  }
+  throw new Error('사용할 수 있는 AI 모델을 찾지 못했어요.');
+}
 
 /* ---------- 내 경제노트 ---------- */
 const notesAll = () => store.get('notes', []);
@@ -77,7 +119,7 @@ function recordWrong(q, ctx){
 const clearWrong = q => store.set('wrongs', wrongsAll().filter(x => x.k !== qKey(q)));
 
 /* ---------- 백업 · 복원 ---------- */
-const buildBackup = () => JSON.stringify({ app: 'buja-land', v: 1, exported: new Date().toISOString(), data: { notes: notesAll(), wrongs: wrongsAll(), profile: profile() } });
+const buildBackup = () => JSON.stringify({ app: 'buja-land', v: 1, exported: new Date().toISOString(), data: { notes: notesAll(), wrongs: wrongsAll(), profile: profile(), qa: qaAll() } });
 function mergeBackup(text){
   let obj; try { obj = JSON.parse(text); } catch { throw new Error('백업 내용을 읽을 수 없어요. 복사한 내용이 맞는지 확인해 주세요.'); }
   const d = obj && obj.data; if (!d || obj.app !== 'buja-land') throw new Error('부자랜드 백업이 아니에요.');
@@ -87,6 +129,12 @@ function mergeBackup(text){
   const wm = new Map(wrongsAll().map(w => [w.k, w]));
   for (const w of d.wrongs || []){ const c = wm.get(w.k); if (w && w.k && w.q && (!c || (w.ts || 0) > (c.ts || 0))) wm.set(w.k, w); }
   store.set('wrongs', [...wm.values()]);
+  const qa = qaAll();
+  for (const [id, arr] of Object.entries(d.qa || {})){
+    const have = new Set((qa[id] || []).map(x => x.q + '|' + x.ts));
+    qa[id] = [...(qa[id] || []), ...(arr || []).filter(x => x && x.q && x.a && !have.has(x.q + '|' + x.ts))].sort((x, y) => (x.ts || 0) - (y.ts || 0)).slice(-20);
+  }
+  store.set('qa', qa);
   const pr = profile(), q = d.profile || {};
   pr.points = Math.max(pr.points || 0, q.points || 0);
   pr.sentences = Math.max(pr.sentences || 0, q.sentences || 0);
@@ -254,6 +302,11 @@ function stepConcept(){
     <div class="concept">${c.level ? `<div class="lvl">${'★'.repeat(c.level)}${'☆'.repeat(3 - c.level)} 난이도 ${['기초', '중급', '심화'][c.level - 1] || ''}</div>` : ''}<h3>${esc(c.term)}</h3>${esc(c.explain)}
       ${c.example ? `<div class="ex">💬 예를 들면: ${esc(c.example)}</div>` : ''}
       ${c.lens ? `<div class="ex lens">📰 뉴스 읽는 법: ${esc(c.lens)}</div>` : ''}</div>
+    <div class="ai"><div class="section-h" style="margin-top:0">🤖 궁금한 것 물어보기</div>
+      <div class="aichips"><button data-q="이 개념을 더 쉽게 설명해줘">더 쉽게</button><button data-q="실생활 예시를 하나 더 들어줘">예시 더</button><button data-q="이 뉴스에서 이 개념이 어떻게 연결되는지 알려줘">뉴스와 연결</button></div>
+      <div id="aithread"></div>
+      <textarea id="aiq" rows="2" maxlength="300" placeholder="궁금한 걸 적어보세요 (예: 금리가 오르면 왜 주가가 떨어져요?)"></textarea>
+      <div class="aibar"><span id="aihint">${getKey() ? '' : '🔑 ⚙️ 설정에서 무료 Gemini 키를 먼저 넣어주세요'}</span><button class="mini-btn on" id="aisend">질문하기</button></div></div>
     ${c.note?.length ? `<div class="section-h">✏️ 노트에 적어보세요</div><div class="note-card">${c.note.map((n, i) => `${'①②③④⑤'[i] || '•'} ${esc(n)}`).join('<br>')}</div>` : ''}
     <div class="memo"><div class="section-h" style="margin-top:0">📒 내 경제노트</div>
       <textarea id="memo" rows="4" maxlength="1000" placeholder="오늘 배운 걸 내 말로 적어보세요"></textarea>
@@ -272,6 +325,31 @@ function stepConcept(){
     const add = c.note.map((n, i) => `${'①②③④⑤'[i] || '•'} ${n}`).join('\n');
     ta.value = ta.value.trim() ? ta.value.trim() + '\n' + add : add; save(); ta.focus();
   };
+  /* AI 질문 */
+  const th = document.getElementById('aithread'), aiq = document.getElementById('aiq'), aisend = document.getElementById('aisend'), aihint = document.getElementById('aihint');
+  const drawThread = () => {
+    th.innerHTML = qaOf(L.a.id).map((h, i) => `<div class="qbub">${esc(h.q)}</div><div class="abub">${mdLite(h.a)}<div class="abtn"><button class="mini-btn" data-sv="${i}">📒 노트에 저장</button></div></div>`).join('');
+    th.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => {
+      const h = qaOf(L.a.id)[+b.dataset.sv];
+      ta.value = (ta.value.trim() ? ta.value.trim() + '\n\n' : '') + `Q. ${h.q}\nA. ${h.a}`.slice(0, 800); save(); b.textContent = '저장됨 ✓';
+    });
+  };
+  drawThread();
+  const ask = async question => {
+    question = (question || aiq.value).trim(); if (!question) return;
+    if (!getKey()){ openSettings(); return; }
+    aisend.disabled = true; aihint.style.color = ''; aihint.textContent = '🤔 생각하는 중…';
+    try {
+      const ans = await askAI(question, L.a, qaOf(L.a.id).slice(-4));
+      qaAdd(L.a.id, { q: question, a: ans, ts: Date.now() }); aiq.value = ''; aihint.textContent = ''; drawThread();
+      th.lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } catch (e) {
+      aihint.style.color = 'var(--bad)';
+      aihint.textContent = e.message === 'NOKEY' ? '🔑 ⚙️ 설정에서 키를 먼저 넣어주세요' : (e instanceof TypeError ? '인터넷 연결을 확인해 주세요.' : e.message);
+    } finally { aisend.disabled = false; }
+  };
+  aisend.onclick = () => ask();
+  document.querySelectorAll('.aichips button').forEach(b => b.onclick = () => ask(b.dataset.q));
   bottomBtn('다음', () => { save(); nextStep(); });
 }
 
